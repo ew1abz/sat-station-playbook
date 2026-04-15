@@ -1,0 +1,47 @@
+---
+# --- Operator identity ---
+operator_callsign: "YOURCALL"
+operator_gridsquare: "AA00aa"
+operator_lat: 0.0          # decimal degrees, north positive
+operator_lon: 0.0          # decimal degrees, east positive
+operator_alt_m: 0          # metres above sea level
+
+# --- Radio: FT-897 (uplink) ---
+ft897_com_port: "COM3"
+ft897_baud: 9600            # Verify via FT-897 Menu 14 (CAT RATE)
+ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
+ft897_rigctld_port: 4532
+
+# --- Radio: FTX-1 (downlink) ---
+ftx1_com_port: "COM5"       # Use Enhanced/CAT-1 port; verify in Device Manager
+ftx1_baud: 38400
+ftx1_hamlib_model: 1060     # PLACEHOLDER — verify: rigctld.exe --list | findstr FTX
+ftx1_rigctld_port: 4533
+
+# --- Rotator ---
+rotator_host: "192.168.1.100"
+rotator_port: 4600
+rotator_easycomm_model: 202  # 202 = EasyComm II; use 204 for EasyComm III
+rotctld_port: 4534
+
+# --- Hamlib ---
+hamlib_version: "4.7"
+hamlib_install_dir: 'C:\hamlib'
+hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7/hamlib-w64-4.7.zip"
+
+# --- Gpredict ---
+# Note: Gpredict is 32-bit; installer may deploy to "C:\Program Files (x86)\Gpredict"
+gpredict_installer_url: "https://sourceforge.net/projects/gpredict/files/latest/download"
+gpredict_install_dir: 'C:\Program Files (x86)\Gpredict'
+
+# --- NSSM ---
+nssm_chocolatey_pkg: "nssm"
+
+# --- TLE update ---
+tle_sources:
+  - name: "amateur"
+    url: "https://celestrak.org/pub/TLE/amateur.txt"
+  - name: "cubesat"
+    url: "https://celestrak.org/pub/TLE/cubesat.txt"
+
+tle_update_schedule_hour: 6

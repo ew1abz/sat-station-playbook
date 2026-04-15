@@ -1,0 +1,47 @@
+---
+- name: Provision satellite tracking station
+  hosts: sat_station
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify Windows target
+      ansible.builtin.assert:
+        that: ansible_os_family == "Windows"
+        fail_msg: "This playbook targets Windows only."
+
+  roles:
+    - winrm_baseline
+    - hamlib
+    - gpredict
+    - tle_update
+
+  post_tasks:
+    - name: Confirm rigctld-ft897 is running
+      ansible.windows.win_service_info:
+        name: rigctld-ft897
+      register: svc_ft897
+
+    - name: Assert rigctld-ft897 is running
+      ansible.builtin.assert:
+        that: svc_ft897.services[0].state == "running"
+        fail_msg: "Service rigctld-ft897 is not running"
+
+    - name: Confirm rigctld-ftx1 is running
+      ansible.windows.win_service_info:
+        name: rigctld-ftx1
+      register: svc_ftx1
+
+    - name: Assert rigctld-ftx1 is running
+      ansible.builtin.assert:
+        that: svc_ftx1.services[0].state == "running"
+        fail_msg: "Service rigctld-ftx1 is not running"
+
+    - name: Confirm rotctld is running
+      ansible.windows.win_service_info:
+        name: rotctld
+      register: svc_rotctld
+
+    - name: Assert rotctld is running
+      ansible.builtin.assert:
+        that: svc_rotctld.services[0].state == "running"
+        fail_msg: "Service rotctld is not running"

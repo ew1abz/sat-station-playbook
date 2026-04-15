@@ -1,0 +1,7 @@
+@echo off
+"{{ hamlib_install_dir }}\bin\rigctld.exe" ^
+  -m {{ ft897_hamlib_model }} ^
+  -r {{ ft897_com_port }} ^
+  -s {{ ft897_baud }} ^
+  -t {{ ft897_rigctld_port }} ^
+  -vvv >> "{{ hamlib_install_dir }}\logs\rigctld-ft897.log" 2>&1

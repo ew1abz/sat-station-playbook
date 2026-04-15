@@ -1,0 +1,31 @@
+---
+- name: Ensure scripts directory exists
+  ansible.windows.win_file:
+    path: "{{ hamlib_install_dir }}\\scripts"
+    state: directory
+
+- name: Deploy TLE update script
+  ansible.windows.win_template:
+    src: Update-TLE.ps1.j2
+    dest: "{{ hamlib_install_dir }}\\scripts\\Update-TLE.ps1"
+
+- name: Register daily TLE update Scheduled Task
+  community.windows.win_scheduled_task:
+    name: GpredictTLEUpdate
+    description: "Daily TLE refresh for Gpredict satellite tracking"
+    actions:
+      - path: powershell.exe
+        arguments: >-
+          -ExecutionPolicy Bypass
+          -File "{{ hamlib_install_dir }}\\scripts\\Update-TLE.ps1"
+    triggers:
+      - type: daily
+        start_boundary: "2000-01-01T{{ '%02d' | format(tle_update_schedule_hour) }}:00:00"
+    run_level: limited
+    state: present
+    enabled: true
+
+- name: Run TLE update immediately to seed satellite data
+  ansible.windows.win_command: >
+    schtasks /Run /TN "GpredictTLEUpdate"
+  changed_when: false

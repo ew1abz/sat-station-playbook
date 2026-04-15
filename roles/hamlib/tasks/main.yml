@@ -1,0 +1,94 @@
+---
+- name: Install NSSM via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ nssm_chocolatey_pkg }}"
+    state: present
+
+- name: Create hamlib install directory
+  ansible.windows.win_file:
+    path: "{{ hamlib_install_dir }}"
+    state: directory
+
+- name: Create hamlib logs directory
+  ansible.windows.win_file:
+    path: "{{ hamlib_install_dir }}\\logs"
+    state: directory
+
+- name: Download hamlib ZIP
+  ansible.windows.win_get_url:
+    url: "{{ hamlib_zip_url }}"
+    dest: "C:\\Temp\\hamlib.zip"
+    follow_redirects: all
+
+# The hamlib ZIP contains a versioned top-level folder (e.g. hamlib-w64-4.7\).
+# Extract to a staging area first, then robocopy the contents to the install dir.
+- name: Extract hamlib ZIP to staging area
+  ansible.windows.win_unzip:
+    src: "C:\\Temp\\hamlib.zip"
+    dest: "C:\\Temp\\hamlib_stage"
+    creates: "C:\\Temp\\hamlib_stage"
+
+- name: Copy hamlib from staging to install directory
+  ansible.windows.win_shell: |
+    $staged = Get-ChildItem -Path "C:\Temp\hamlib_stage" -Directory |
+      Select-Object -First 1 -ExpandProperty FullName
+    robocopy "$staged" "{{ hamlib_install_dir }}" /E | Out-Null
+  args:
+    creates: "{{ hamlib_install_dir }}\\bin\\rigctld.exe"
+
+- name: Add hamlib bin to system PATH
+  ansible.windows.win_path:
+    elements: "{{ hamlib_install_dir }}\\bin"
+    state: present
+    scope: machine
+
+- name: Template rigctld-ft897 launch script
+  ansible.windows.win_template:
+    src: rigctld-ft897.bat.j2
+    dest: "{{ hamlib_install_dir }}\\rigctld-ft897.bat"
+
+- name: Template rigctld-ftx1 launch script
+  ansible.windows.win_template:
+    src: rigctld-ftx1.bat.j2
+    dest: "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
+
+- name: Template rotctld launch script
+  ansible.windows.win_template:
+    src: rotctld.bat.j2
+    dest: "{{ hamlib_install_dir }}\\rotctld.bat"
+
+- name: Register rigctld-ft897 as NSSM service
+  community.windows.win_nssm:
+    name: rigctld-ft897
+    application: "{{ hamlib_install_dir }}\\rigctld-ft897.bat"
+    start_mode: auto
+    state: present
+
+- name: Register rigctld-ftx1 as NSSM service
+  community.windows.win_nssm:
+    name: rigctld-ftx1
+    application: "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
+    start_mode: auto
+    state: present
+
+- name: Register rotctld as NSSM service
+  community.windows.win_nssm:
+    name: rotctld
+    application: "{{ hamlib_install_dir }}\\rotctld.bat"
+    start_mode: auto
+    state: present
+
+- name: Start rigctld-ft897
+  ansible.windows.win_service:
+    name: rigctld-ft897
+    state: started
+
+- name: Start rigctld-ftx1
+  ansible.windows.win_service:
+    name: rigctld-ftx1
+    state: started
+
+- name: Start rotctld
+  ansible.windows.win_service:
+    name: rotctld
+    state: started

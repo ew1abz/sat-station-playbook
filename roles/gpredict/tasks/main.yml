@@ -1,0 +1,57 @@
+---
+- name: Check if Gpredict is installed
+  ansible.windows.win_stat:
+    path: "{{ gpredict_install_dir }}\\gpredict.exe"
+  register: gpredict_bin
+
+- name: Download Gpredict installer
+  ansible.windows.win_get_url:
+    url: "{{ gpredict_installer_url }}"
+    dest: "C:\\Temp\\gpredict-setup.exe"
+    follow_redirects: all
+  when: not gpredict_bin.stat.exists
+
+- name: Install Gpredict silently (NSIS /S flag)
+  ansible.windows.win_package:
+    path: "C:\\Temp\\gpredict-setup.exe"
+    arguments: "/S"
+    state: present
+  when: not gpredict_bin.stat.exists
+
+- name: Ensure Gpredict config directory exists
+  ansible.windows.win_file:
+    path: "{{ ansible_env.APPDATA }}\\Gpredict"
+    state: directory
+
+- name: Ensure Gpredict satdata directory exists
+  ansible.windows.win_file:
+    path: "{{ ansible_env.APPDATA }}\\Gpredict\\satdata"
+    state: directory
+
+- name: Ensure Gpredict hwconf directory exists
+  ansible.windows.win_file:
+    path: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf"
+    state: directory
+
+- name: Deploy gpredict.cfg
+  ansible.windows.win_template:
+    src: gpredict.cfg.j2
+    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
+
+# Hardware interface files — radio and rotator connections are configured here,
+# not in gpredict.cfg. Verify key names against a live Gpredict install if
+# Gpredict does not detect the interfaces after deployment.
+- name: Deploy FT-897 radio interface (uplink)
+  ansible.windows.win_template:
+    src: ft897.rig.j2
+    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
+
+- name: Deploy FTX-1 radio interface (downlink)
+  ansible.windows.win_template:
+    src: ftx1.rig.j2
+    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
+
+- name: Deploy rotator interface
+  ansible.windows.win_template:
+    src: rotator.rot.j2
+    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"

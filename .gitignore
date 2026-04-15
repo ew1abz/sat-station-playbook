@@ -1,0 +1,4 @@
+# Inventory contains plaintext credentials — never commit
+inventory/hosts.ini
+
+*.retry

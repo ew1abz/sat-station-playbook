@@ -1,0 +1,23 @@
+---
+- name: Verify WinRM connectivity
+  ansible.windows.win_ping:
+
+- name: Ensure Chocolatey is installed
+  ansible.windows.win_shell: |
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    [System.Net.ServicePointManager]::SecurityProtocol = `
+      [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString(
+      'https://community.chocolatey.org/install.ps1'))
+  args:
+    creates: C:\ProgramData\chocolatey\bin\choco.exe
+
+- name: Get Chocolatey version
+  ansible.windows.win_command: choco --version
+  register: choco_version
+  changed_when: false
+
+- name: Assert Chocolatey version >= 2.0
+  ansible.builtin.assert:
+    that: choco_version.stdout | trim is version('2.0.0', '>=')
+    fail_msg: "Chocolatey {{ choco_version.stdout | trim }} is below minimum 2.0.0"
