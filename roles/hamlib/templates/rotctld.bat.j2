@@ -1,6 +1,0 @@
-@echo off
-"{{ hamlib_install_dir }}\bin\rotctld.exe" ^
-  -m {{ rotator_easycomm_model }} ^
-  -r {{ rotator_host }}:{{ rotator_port }} ^
-  -t {{ rotctld_port }} ^
-  -vvv >> "{{ hamlib_install_dir }}\logs\rotctld.log" 2>&1

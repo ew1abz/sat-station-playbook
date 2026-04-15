@@ -1,4 +1,48 @@
 ---
+# --- COM port auto-detection ---
+
+- name: Detect FT-897 COM port (FTDI chip, USB VID_0403)
+  ansible.windows.win_shell: |
+    $dev = Get-PnpDevice -Class Ports -Status OK |
+        Where-Object { $_.InstanceId -like '*VID_0403*' } |
+        Select-Object -First 1
+    if (-not $dev) {
+        Write-Error "FT-897 not detected — check USB cable and FTDI driver"
+        exit 1
+    }
+    [regex]::Match($dev.FriendlyName, 'COM\d+').Value
+  register: ft897_detected
+  changed_when: false
+
+- name: Set FT-897 COM port fact
+  ansible.builtin.set_fact:
+    ft897_com_port: "{{ ft897_detected.stdout | trim }}"
+
+- name: Detect FTX-1 Enhanced COM port (CP2105 chip, USB VID_10C4)
+  ansible.windows.win_shell: |
+    $dev = Get-PnpDevice -Class Ports -Status OK |
+        Where-Object { $_.InstanceId -like '*VID_10C4*' -and $_.FriendlyName -like '*Enhanced*' } |
+        Select-Object -First 1
+    if (-not $dev) {
+        Write-Error "FTX-1 Enhanced COM port not detected — check USB cable and Silicon Labs CP210x driver"
+        exit 1
+    }
+    [regex]::Match($dev.FriendlyName, 'COM\d+').Value
+  register: ftx1_detected
+  changed_when: false
+
+- name: Set FTX-1 COM port fact
+  ansible.builtin.set_fact:
+    ftx1_com_port: "{{ ftx1_detected.stdout | trim }}"
+
+- name: Show detected COM ports
+  ansible.builtin.debug:
+    msg:
+      - "FT-897  → {{ ft897_com_port }}"
+      - "FTX-1   → {{ ftx1_com_port }}"
+
+# --- Hamlib installation ---
+
 - name: Install NSSM via Chocolatey
   chocolatey.chocolatey.win_chocolatey:
     name: "{{ nssm_chocolatey_pkg }}"
@@ -21,7 +65,7 @@
     follow_redirects: all
 
 # The hamlib ZIP contains a versioned top-level folder (e.g. hamlib-w64-4.7\).
-# Extract to a staging area first, then robocopy the contents to the install dir.
+# Extract to staging first, then robocopy contents to the install directory.
 - name: Extract hamlib ZIP to staging area
   ansible.windows.win_unzip:
     src: "C:\\Temp\\hamlib.zip"
@@ -31,7 +75,7 @@
 - name: Copy hamlib from staging to install directory
   ansible.windows.win_shell: |
     $staged = Get-ChildItem -Path "C:\Temp\hamlib_stage" -Directory |
-      Select-Object -First 1 -ExpandProperty FullName
+        Select-Object -First 1 -ExpandProperty FullName
     robocopy "$staged" "{{ hamlib_install_dir }}" /E | Out-Null
   args:
     creates: "{{ hamlib_install_dir }}\\bin\\rigctld.exe"
@@ -41,6 +85,8 @@
     elements: "{{ hamlib_install_dir }}\\bin"
     state: present
     scope: machine
+
+# --- Service scripts ---
 
 - name: Template rigctld-ft897 launch script
   ansible.windows.win_template:
@@ -52,10 +98,7 @@
     src: rigctld-ftx1.bat.j2
     dest: "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
 
-- name: Template rotctld launch script
-  ansible.windows.win_template:
-    src: rotctld.bat.j2
-    dest: "{{ hamlib_install_dir }}\\rotctld.bat"
+# --- NSSM service registration ---
 
 - name: Register rigctld-ft897 as NSSM service
   community.windows.win_nssm:
@@ -71,13 +114,6 @@
     start_mode: auto
     state: present
 
-- name: Register rotctld as NSSM service
-  community.windows.win_nssm:
-    name: rotctld
-    application: "{{ hamlib_install_dir }}\\rotctld.bat"
-    start_mode: auto
-    state: present
-
 - name: Start rigctld-ft897
   ansible.windows.win_service:
     name: rigctld-ft897
@@ -86,9 +122,4 @@
 - name: Start rigctld-ftx1
   ansible.windows.win_service:
     name: rigctld-ftx1
-    state: started
-
-- name: Start rotctld
-  ansible.windows.win_service:
-    name: rotctld
     state: started

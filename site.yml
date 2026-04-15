@@ -11,6 +11,7 @@
 
   roles:
     - winrm_baseline
+    - net_adapter
     - hamlib
     - gpredict
     - tle_update
@@ -35,13 +36,3 @@
       ansible.builtin.assert:
         that: svc_ftx1.services[0].state == "running"
         fail_msg: "Service rigctld-ftx1 is not running"
-
-    - name: Confirm rotctld is running
-      ansible.windows.win_service_info:
-        name: rotctld
-      register: svc_rotctld
-
-    - name: Assert rotctld is running
-      ansible.builtin.assert:
-        that: svc_rotctld.services[0].state == "running"
-        fail_msg: "Service rotctld is not running"

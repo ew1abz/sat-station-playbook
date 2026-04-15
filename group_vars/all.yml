@@ -7,22 +7,32 @@ operator_lon: 0.0          # decimal degrees, east positive
 operator_alt_m: 0          # metres above sea level
 
 # --- Radio: FT-897 (uplink) ---
-ft897_com_port: "COM3"
+# ft897_com_port is auto-detected from USB VID_0403 (FTDI) at runtime.
+# Set manually here only if auto-detection fails.
+ft897_com_port: ""
 ft897_baud: 9600            # Verify via FT-897 Menu 14 (CAT RATE)
 ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
 ft897_rigctld_port: 4532
 
 # --- Radio: FTX-1 (downlink) ---
-ftx1_com_port: "COM5"       # Use Enhanced/CAT-1 port; verify in Device Manager
+# ftx1_com_port is auto-detected from USB VID_10C4 Enhanced port (CP2105) at runtime.
+# Set manually here only if auto-detection fails.
+ftx1_com_port: ""
 ftx1_baud: 38400
 ftx1_hamlib_model: 1060     # PLACEHOLDER — verify: rigctld.exe --list | findstr FTX
-ftx1_rigctld_port: 4533
+ftx1_rigctld_port: 4535     # 4533 is reserved for polar-pilot
 
-# --- Rotator ---
-rotator_host: "192.168.1.100"
-rotator_port: 4600
-rotator_easycomm_model: 202  # 202 = EasyComm II; use 204 for EasyComm III
-rotctld_port: 4534
+# --- Rotator (polar-pilot) ---
+# polar-pilot speaks rotctld protocol directly — no local rotctld daemon needed.
+# It falls back to this static IP after 120 s if no DHCP server responds.
+rotator_host: "192.168.1.200"
+rotator_port: 4533
+
+# --- USB Ethernet adapter (dedicated link to rotator) ---
+# The adapter is auto-detected by USB bus type.
+# Must be on the same /24 subnet as rotator_host.
+usb_eth_ip: "192.168.1.1"
+usb_eth_prefix: 24
 
 # --- Hamlib ---
 hamlib_version: "4.7"
@@ -30,7 +40,7 @@ hamlib_install_dir: 'C:\hamlib'
 hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7/hamlib-w64-4.7.zip"
 
 # --- Gpredict ---
-# Note: Gpredict is 32-bit; installer may deploy to "C:\Program Files (x86)\Gpredict"
+# Note: Gpredict is 32-bit; installer typically deploys to Program Files (x86)
 gpredict_installer_url: "https://sourceforge.net/projects/gpredict/files/latest/download"
 gpredict_install_dir: 'C:\Program Files (x86)\Gpredict'
 
