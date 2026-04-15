@@ -1,6 +1,6 @@
-# SatStationSpec
+# sat-station-playbook
 
-Specification for an Ansible playbook that provisions a Windows-based amateur radio satellite ground station.
+Ansible playbook that provisions a Windows-based amateur radio satellite ground station.
 
 ## What it does
 
@@ -13,12 +13,21 @@ Automates setup of a two-radio + rotator tracking station on Windows 10/11, cont
 
 Services are managed by NSSM so they start at boot and restart on failure.
 
+## Usage
+
+1. Complete the [manual prerequisites](sat_station_ansible_spec.md#2-prerequisites-manual-steps--not-automated) (WinRM, COM ports, hamlib version)
+2. Copy `inventory/hosts.ini` and fill in your Windows username and password
+3. Edit `group_vars/all.yml` — at minimum set your callsign, location, and COM ports
+4. Run:
+
+   ```bash
+   ansible-galaxy collection install -r requirements.yml
+   ansible-playbook -i inventory/hosts.ini site.yml
+   ```
+
 ## Contents
 
-- [`sat_station_ansible_spec.md`](sat_station_ansible_spec.md) — full playbook specification including roles, variables, templates, and known limitations
-
-The Ansible playbook itself is not yet implemented. The spec defines everything needed to build it.
-
-## Status
-
-Design phase. See the [open items](sat_station_ansible_spec.md#7-known-limitations-and-open-items) in the spec for what needs to be resolved before implementation.
+- [`sat_station_ansible_spec.md`](sat_station_ansible_spec.md) — full specification, variable reference, and known limitations
+- [`site.yml`](site.yml) — top-level playbook
+- [`group_vars/all.yml`](group_vars/all.yml) — all operator-configurable variables
+- [`roles/`](roles/) — `winrm_baseline`, `hamlib`, `gpredict`, `tle_update`
