@@ -1,0 +1,34 @@
+---
+- name: Remove satellite tracking station
+  hosts: sat_station
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify Windows target
+      ansible.builtin.assert:
+        that: ansible_os_family == "Windows"
+        fail_msg: "This playbook targets Windows only."
+
+  tasks:
+    - name: Remove TLE update scheduled task
+      ansible.builtin.include_role:
+        name: tle_update
+        tasks_from: uninstall
+
+    - name: Uninstall Gpredict and remove config
+      ansible.builtin.include_role:
+        name: gpredict
+        tasks_from: uninstall
+
+    - name: Stop and remove rigctld services, delete hamlib
+      ansible.builtin.include_role:
+        name: hamlib
+        tasks_from: uninstall
+
+    - name: Restore USB Ethernet adapter to DHCP
+      ansible.builtin.include_role:
+        name: net_adapter
+        tasks_from: uninstall
+
+  # winrm_baseline is intentionally not uninstalled —
+  # WinRM must remain active for Ansible to manage the host.

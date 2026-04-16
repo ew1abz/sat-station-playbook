@@ -1,0 +1,41 @@
+---
+- name: Stop rigctld-ft897 service
+  ansible.windows.win_service:
+    name: rigctld-ft897
+    state: stopped
+  ignore_errors: true
+
+- name: Remove rigctld-ft897 NSSM service
+  community.windows.win_nssm:
+    name: rigctld-ft897
+    state: absent
+
+- name: Stop rigctld-ftx1 service
+  ansible.windows.win_service:
+    name: rigctld-ftx1
+    state: stopped
+  ignore_errors: true
+
+- name: Remove rigctld-ftx1 NSSM service
+  community.windows.win_nssm:
+    name: rigctld-ftx1
+    state: absent
+
+- name: Remove hamlib bin from system PATH
+  ansible.windows.win_path:
+    elements: "{{ hamlib_install_dir }}\\bin"
+    state: absent
+    scope: machine
+
+- name: Remove hamlib install directory
+  ansible.windows.win_file:
+    path: "{{ hamlib_install_dir }}"
+    state: absent
+
+- name: Remove hamlib staging files
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - 'C:\Temp\hamlib.zip'
+    - 'C:\Temp\hamlib_stage'

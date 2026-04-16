@@ -1,0 +1,5 @@
+---
+- name: Remove GpredictTLEUpdate scheduled task
+  community.windows.win_scheduled_task:
+    name: GpredictTLEUpdate
+    state: absent

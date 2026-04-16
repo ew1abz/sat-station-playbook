@@ -1,0 +1,20 @@
+---
+- name: Find USB Ethernet adapter
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter -Physical | Where-Object {
+        (Get-NetAdapterHardwareInfo -Name $_.Name -ErrorAction SilentlyContinue).BusType -eq 'USB'
+    } | Select-Object -First 1
+    if (-not $adapter) { exit 0 }   # adapter absent or already removed — nothing to do
+    $adapter.Name
+  register: usb_adapter_name
+  changed_when: false
+
+- name: Restore DHCP on USB Ethernet adapter
+  ansible.windows.win_shell: |
+    $name = "{{ usb_adapter_name.stdout | trim }}"
+    if (-not $name) { exit 0 }
+    Remove-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4 `
+        -Confirm:$false -ErrorAction SilentlyContinue
+    Set-NetIPInterface -InterfaceAlias $name -Dhcp Enabled
+  when: usb_adapter_name.stdout | trim | length > 0
+  changed_when: true
