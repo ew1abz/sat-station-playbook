@@ -5,23 +5,27 @@
 **Control node:** WSL2 (Ubuntu 22.04+) on the same physical laptop  
 **Purpose:** Reproducible provisioning of a two-radio + rotator satellite ground station  
 **Radios:** Yaesu FT-897 (uplink) · Yaesu FTX-1 (downlink)  
-**Rotator protocol:** EasyComm (TCP)  
+**Rotator:** polar-pilot firmware (rotctld protocol, TCP)  
 **Tracking software:** Gpredict (Windows native)
 
 ---
 
 ## 1. Architecture Overview
 
-```
+```text
 WSL2 (Ubuntu)
 └── ansible-playbook → WinRM → Windows host (localhost)
-                                  ├── NSSM service: rigctld-ft897   :4532
-                                  ├── NSSM service: rigctld-ftx1    :4533
-                                  ├── NSSM service: rotctld         :4534
+                                  ├── NSSM service: rigctld-ft897   :4532  ← FT-897 on auto-detected COM
+                                  ├── NSSM service: rigctld-ftx1    :4535  ← FTX-1 on auto-detected COM
+                                  ├── USB-Eth adapter               192.168.1.1/24
                                   └── Gpredict.exe
                                         ├── Radio 1 (uplink)   → 127.0.0.1:4532
-                                        ├── Radio 2 (downlink) → 127.0.0.1:4533
-                                        └── Rotator            → 127.0.0.1:4534
+                                        ├── Radio 2 (downlink) → 127.0.0.1:4535
+                                        └── Rotator            → 192.168.1.200:4533
+
+polar-pilot (STM32L432 + W5500 Ethernet)   192.168.1.200:4533
+└── speaks rotctld protocol natively — no local rotctld daemon needed
+    (falls back to 192.168.1.200 after 120 s if no DHCP server responds)
 ```
 
 The control node and managed node are the same physical machine. Ansible runs inside
@@ -64,18 +68,18 @@ pip install pywinrm --break-system-packages
 ansible-galaxy collection install ansible.windows community.windows
 ```
 
-### 2.3 COM Port Identification
+### 2.3 COM Port Drivers
 
-Connect the radios one at a time and note the assigned COM port in Windows Device Manager.
-Record these values — they go into `group_vars/all.yml` (see section 4).
+Both radios must be plugged in before running the playbook. COM ports are
+**auto-detected at run time** via USB Vendor ID — no manual entry in `group_vars` needed.
 
-| Radio   | USB chip          | Driver source           |
-|---------|-------------------|-------------------------|
-| FT-897  | FTDI (CT-62 cable or USB-serial adapter) | FTDI CDM driver, or via Chocolatey `vcredist140` |
-| FTX-1   | Silicon Labs CP210x (built-in USB-C)     | Silabs CP210x driver    |
+| Radio   | USB chip                                  | Driver source           |
+|---------|-------------------------------------------|-------------------------|
+| FT-897  | FTDI (CT-62 cable or USB-serial adapter)  | FTDI CDM driver         |
+| FTX-1   | Silicon Labs CP2105 (built-in USB-C)      | Silabs CP210x driver    |
 
-The FTX-1 presents **two** virtual COM ports (Enhanced + Standard). Use the Enhanced
-COM port (CAT-1) for Gpredict/rigctld.
+The FTX-1 CP2105 presents two COM ports. The playbook selects the Enhanced (CAT-1) port
+automatically by matching `Enhanced` in the Windows PnP friendly name.
 
 ### 2.4 Hamlib Version Requirement
 
@@ -84,16 +88,20 @@ FTX-1 support was added in **hamlib 4.7**. Confirm the version downloaded (see s
 installer is older, the standalone hamlib binaries (rigctld.exe, rotctld.exe) must be
 sourced from the hamlib 4.7 release separately.
 
-### 2.5 Rotator TCP Endpoint
+### 2.5 USB Ethernet Adapter and Rotator
 
-Confirm the rotator controller's IP address and TCP port before deployment. The rotator
-must already be powered, network-reachable, and responding to EasyComm commands.
+Connect the dedicated USB-Ethernet adapter before running the playbook. The playbook
+detects it by USB bus type and assigns it `192.168.1.1/24`.
+
+polar-pilot must be powered and connected to the same adapter. It attempts DHCP for
+120 s then falls back to `192.168.1.200/24`. With no DHCP server on the dedicated
+adapter, the fallback engages automatically — no DHCP server is needed on the PC.
 
 ---
 
 ## 3. Repository Layout
 
-```
+```text
 sat-station/
 ├── inventory/
 │   └── hosts.ini
@@ -101,22 +109,11 @@ sat-station/
 │   └── all.yml
 ├── roles/
 │   ├── winrm_baseline/        # WinRM connection test + Chocolatey bootstrap
-│   ├── hamlib/                # Install hamlib binaries, configure services via NSSM
-│   ├── gpredict/              # Install Gpredict, deploy config files
+│   ├── net_adapter/           # USB-Eth adapter static IP configuration
+│   ├── hamlib/                # COM auto-detection, hamlib install, rigctld NSSM services
+│   ├── gpredict/              # Install Gpredict, deploy config + hwconf files
 │   └── tle_update/            # Scheduled Task for periodic TLE refresh
-├── files/
-│   ├── gpredict/
-│   │   ├── gpredict.cfg       # Gpredict main config (templated)
-│   │   └── satellites/        # Optional: pre-seeded TLE files
-│   └── nssm/
-│       ├── rigctld-ft897.xml  # NSSM service definition (templated)
-│       ├── rigctld-ftx1.xml   # NSSM service definition (templated)
-│       └── rotctld.xml        # NSSM service definition (templated)
-├── templates/
-│   ├── gpredict.cfg.j2
-│   ├── rigctld-ft897.bat.j2
-│   ├── rigctld-ftx1.bat.j2
-│   └── rotctld.bat.j2
+├── requirements.yml           # Ansible collection pins
 └── site.yml                   # Top-level playbook
 ```
 
@@ -150,52 +147,56 @@ operator_callsign: "YOURCALL"
 operator_gridsquare: "AA00aa"
 operator_lat: 0.0          # decimal degrees, north positive
 operator_lon: 0.0          # decimal degrees, east positive
-operator_alt_m: 0          # altitude in metres above sea level
+operator_alt_m: 0          # metres above sea level
 
-# --- Radio: FT-897 (uplink radio) ---
-ft897_com_port: "COM3"
-ft897_baud: 9600            # FT-897 default; change if set otherwise on the radio
-ft897_hamlib_model: 1021    # hamlib model number for FT-897
-ft897_rigctld_port: 4532    # TCP port Gpredict connects to
+# --- Radio: FT-897 (uplink) ---
+# ft897_com_port is auto-detected at run time via USB VID_0403 (FTDI).
+# Override here only if auto-detection fails.
+ft897_com_port: ""
+ft897_baud: 9600            # Verify via FT-897 Menu 14 (CAT RATE)
+ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
+ft897_rigctld_port: 4532
 
-# --- Radio: FTX-1 (downlink radio) ---
-ftx1_com_port: "COM5"       # Enhanced COM port (CAT-1); confirm in Device Manager
-ftx1_baud: 38400            # FTX-1 default CAT-1 rate; must match radio menu setting
-ftx1_hamlib_model: 1060     # PLACEHOLDER — verify actual model number in hamlib 4.7
-                             # Check: rigctld.exe --list | findstr FTX
-ftx1_rigctld_port: 4533
+# --- Radio: FTX-1 (downlink) ---
+# ftx1_com_port is auto-detected at run time via USB VID_10C4 + "Enhanced" port (CP2105).
+# Override here only if auto-detection fails.
+ftx1_com_port: ""
+ftx1_baud: 38400
+ftx1_hamlib_model: 1060     # PLACEHOLDER — verify: rigctld.exe --list | findstr FTX
+ftx1_rigctld_port: 4535     # 4533 is reserved for polar-pilot
 
-# --- Rotator ---
-rotator_host: "192.168.1.100"   # IP of the rotator controller (TCP)
-rotator_port: 4600              # TCP port on the rotator controller
-rotator_easycomm_model: 202     # 202 = EasyComm II; use 204 for EasyComm III if supported
-rotctld_port: 4534              # TCP port rotctld listens on (Gpredict connects here)
+# --- Rotator (polar-pilot) ---
+# polar-pilot speaks rotctld protocol directly — no local rotctld daemon needed.
+# Falls back to 192.168.1.200 after 120 s with no DHCP response.
+rotator_host: "192.168.1.200"
+rotator_port: 4533
+
+# --- USB Ethernet adapter (dedicated link to rotator) ---
+# Detected automatically by USB bus type. Must share a /24 with rotator_host.
+usb_eth_ip: "192.168.1.1"
+usb_eth_prefix: 24
 
 # --- Hamlib ---
 hamlib_version: "4.7"
 hamlib_install_dir: 'C:\hamlib'
 hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7/hamlib-w64-4.7.zip"
-# Verify URL against actual 4.7 release tag at https://github.com/Hamlib/Hamlib/releases
 
 # --- Gpredict ---
+# Gpredict is 32-bit; installer typically deploys to Program Files (x86).
 gpredict_installer_url: "https://sourceforge.net/projects/gpredict/files/latest/download"
-gpredict_install_dir: 'C:\Program Files\Gpredict'
-gpredict_config_dir: '%APPDATA%\Gpredict'   # expands to C:\Users\<user>\AppData\Roaming\Gpredict
+gpredict_install_dir: 'C:\Program Files (x86)\Gpredict'
 
-# --- NSSM (service manager) ---
+# --- NSSM ---
 nssm_chocolatey_pkg: "nssm"
 
 # --- TLE sources ---
 tle_sources:
   - name: "amateur"
-    url: "https://celestrak.org/SOCRATES/query.php?catalog=amateur"
+    url: "https://celestrak.org/pub/TLE/amateur.txt"
   - name: "cubesat"
-    url: "https://celestrak.org/SOCRATES/query.php?catalog=cubesat"
-# Simpler alternative (direct TLE files):
-#   - name: "amateur"
-#     url: "https://celestrak.org/pub/TLE/catalog.txt"
+    url: "https://celestrak.org/pub/TLE/cubesat.txt"
 
-tle_update_schedule_hour: 6    # Run TLE update daily at this hour (local time)
+tle_update_schedule_hour: 6
 ```
 
 ---
@@ -207,6 +208,7 @@ tle_update_schedule_hour: 6    # Run TLE update daily at this hour (local time)
 **Purpose:** Verify connectivity, bootstrap Chocolatey.
 
 **Tasks:**
+
 1. `win_ping` — verify WinRM connectivity
 2. `win_chocolatey` with `state: present` and `bootstrap: true` — install Chocolatey if absent
 3. Assert Chocolatey version ≥ 2.0
@@ -215,10 +217,29 @@ tle_update_schedule_hour: 6    # Run TLE update daily at this hour (local time)
 
 ---
 
-### 5.2 `hamlib`
+### 5.2 `net_adapter`
 
-**Purpose:** Deploy hamlib Windows binaries and register rigctld + rotctld as persistent
-Windows services using NSSM.
+**Purpose:** Configure the dedicated USB-Ethernet adapter with a static IP so that
+polar-pilot's fallback address is reachable immediately after boot.
+
+**Tasks:**
+
+1. Find the USB-Ethernet adapter using `Get-NetAdapterHardwareInfo` filtered by
+   `BusType -eq 'USB'`. Fail with a clear message if none is found.
+
+2. Check whether `{{ usb_eth_ip }}` is already assigned to the adapter.
+
+3. If not: remove any existing IPv4 addresses, disable DHCP on the adapter, and
+   assign `{{ usb_eth_ip }}/{{ usb_eth_prefix }}` via `New-NetIPAddress`.
+
+**Key variables:** `usb_eth_ip` (default `192.168.1.1`), `usb_eth_prefix` (default `24`).
+
+---
+
+### 5.3 `hamlib`
+
+**Purpose:** Auto-detect radio COM ports, deploy hamlib Windows binaries, and register
+`rigctld` instances as persistent Windows services using NSSM.
 
 **What is NSSM?** NSSM (Non-Sucking Service Manager) is a utility that wraps any
 executable — including console programs like `rigctld.exe` — as a proper Windows
@@ -226,45 +247,40 @@ service. Windows has no built-in equivalent of `systemd` or `launchd` for arbitr
 executables: the native Service Control Manager requires services to implement a
 specific Win32 API. NSSM bridges that gap by acting as the SCM-compliant wrapper,
 forwarding start/stop/restart signals and capturing stdout/stderr to a log file.
-This gives `rigctld` and `rotctld` automatic startup at boot and automatic restart
-on crash without any changes to the hamlib binaries themselves.
+This gives `rigctld` automatic startup at boot and automatic restart on crash without
+any changes to the hamlib binaries themselves.
 
 **Tasks:**
 
-1. Install NSSM via Chocolatey:
-   ```yaml
-   win_chocolatey:
-     name: "{{ nssm_chocolatey_pkg }}"
-     state: present
-   ```
+1. **Auto-detect COM ports** via `Get-PnpDevice -Class Ports`:
+   - FT-897: filter `InstanceId -like '*VID_0403*'` (FTDI chip)
+   - FTX-1: filter `InstanceId -like '*VID_10C4*'` and `FriendlyName -like '*Enhanced*'`
+     (CP2105 dual-port; Enhanced = CAT-1 port)
+   - Extract port name from `FriendlyName` with regex; set as Ansible facts.
+   - Fail fast with a descriptive error if either radio is not detected.
 
-2. Create hamlib install directory `{{ hamlib_install_dir }}`
+2. Install NSSM via Chocolatey.
 
-3. Download hamlib ZIP from `{{ hamlib_zip_url }}` to a temp path using `win_get_url`
+3. Create `{{ hamlib_install_dir }}` and `{{ hamlib_install_dir }}\logs`.
 
-4. Unarchive hamlib ZIP into `{{ hamlib_install_dir }}` using `win_unzip`  
-   (target is `hamlib_install_dir\bin\rigctld.exe` and `rotctld.exe`)
+4. Download hamlib ZIP from `{{ hamlib_zip_url }}` via `win_get_url`.
 
-5. Add `{{ hamlib_install_dir }}\bin` to system `PATH` via `win_path`
+5. Extract ZIP to a staging directory; robocopy the versioned subfolder to
+   `{{ hamlib_install_dir }}` (the ZIP contains a top-level versioned folder,
+   e.g. `hamlib-w64-4.7\`, that must be stripped).
 
-6. Template launch scripts:
+6. Add `{{ hamlib_install_dir }}\bin` to the system `PATH`.
+
+7. Template launch scripts using the detected COM ports:
    - `rigctld-ft897.bat` → `{{ hamlib_install_dir }}\rigctld-ft897.bat`
    - `rigctld-ftx1.bat` → `{{ hamlib_install_dir }}\rigctld-ftx1.bat`
-   - `rotctld.bat` → `{{ hamlib_install_dir }}\rotctld.bat`
 
-7. Register each as an NSSM service (three iterations or three explicit tasks):
-   ```
-   nssm install rigctld-ft897 <path-to-bat>
-   nssm set rigctld-ft897 Start SERVICE_AUTO_START
-   nssm start rigctld-ft897
-   ```
-   Use `win_service` or `community.windows.win_nssm` module if available.
-
-8. Verify each service is running with `win_service_info`
+8. Register each as an NSSM service via `community.windows.win_nssm` and start it.
 
 **Templates:**
 
 `rigctld-ft897.bat.j2`:
+
 ```bat
 @echo off
 "{{ hamlib_install_dir }}\bin\rigctld.exe" ^
@@ -276,6 +292,7 @@ on crash without any changes to the hamlib binaries themselves.
 ```
 
 `rigctld-ftx1.bat.j2`:
+
 ```bat
 @echo off
 "{{ hamlib_install_dir }}\bin\rigctld.exe" ^
@@ -286,22 +303,9 @@ on crash without any changes to the hamlib binaries themselves.
   -vvv >> "{{ hamlib_install_dir }}\logs\rigctld-ftx1.log" 2>&1
 ```
 
-`rotctld.bat.j2`:
-```bat
-@echo off
-"{{ hamlib_install_dir }}\bin\rotctld.exe" ^
-  -m {{ rotator_easycomm_model }} ^
-  -r {{ rotator_host }}:{{ rotator_port }} ^
-  -t {{ rotctld_port }} ^
-  -vvv >> "{{ hamlib_install_dir }}\logs\rotctld.log" 2>&1
-```
-
-**Idempotency note:** Check whether the NSSM service already exists before calling
-`nssm install`. Use `win_service_info` as a guard and conditionally run install.
-
 ---
 
-### 5.3 `gpredict`
+### 5.4 `gpredict`
 
 **Purpose:** Install Gpredict and deploy operator-specific configuration.
 
@@ -313,6 +317,7 @@ on crash without any changes to the hamlib binaries themselves.
 2. If not installed:
    - Download installer EXE via `win_get_url`
    - Run silent installer via `win_package`:
+
      ```yaml
      win_package:
        path: "C:\\Temp\\gpredict-setup.exe"
@@ -327,47 +332,19 @@ on crash without any changes to the hamlib binaries themselves.
 
 5. Deploy any pre-seeded TLE files to `%APPDATA%\Gpredict\satdata\`
 
-**`gpredict.cfg.j2` — key sections to template:**
+Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as separate
+`.rig` and `.rot` files, not in `gpredict.cfg`. The role templates all three:
 
-```ini
-[GLOBAL]
-version=2
-[GROUND_STATION]
-name={{ operator_callsign }}
-lat={{ operator_lat }}
-lon={{ operator_lon }}
-alt={{ operator_alt_m }}
-qth={{ operator_gridsquare }}
+- `ft897.rig` → uplink radio, connects to `127.0.0.1:{{ ft897_rigctld_port }}`
+- `ftx1.rig` → downlink radio, connects to `127.0.0.1:{{ ftx1_rigctld_port }}`
+- `rotator.rot` → connects **directly to polar-pilot** at `{{ rotator_host }}:{{ rotator_port }}`
 
-# Radio 1 — uplink (FT-897)
-[RADIO_1]
-host=127.0.0.1
-port={{ ft897_rigctld_port }}
-type=1    ; 1 = RIG_TYPE_OTHER (duplex capable)
-
-# Radio 2 — downlink (FTX-1)
-[RADIO_2]
-host=127.0.0.1
-port={{ ftx1_rigctld_port }}
-type=1
-
-# Rotator
-[ROTATOR_1]
-host=127.0.0.1
-port={{ rotctld_port }}
-```
-
-> **Note:** The actual Gpredict config file format uses INI-like keys but the exact
-> section names and keys should be verified against the installed version's
-> `gpredict.cfg` schema. Gpredict stores radio and rotator settings in separate
-> `.rig` and `.rot` files under `%APPDATA%\Gpredict\hwconf\`. The playbook should
-> template those files instead of (or in addition to) `gpredict.cfg` for full
-> hardware configuration. Extract working examples from a configured installation
-> before writing the templates.
+> **Note:** The `.rig`/`.rot` key names should be verified against a live Gpredict
+> installation — extract working examples before finalising the templates.
 
 ---
 
-### 5.4 `tle_update`
+### 5.5 `tle_update`
 
 **Purpose:** Register a Windows Scheduled Task that fetches fresh TLE data daily.
 
@@ -375,6 +352,7 @@ port={{ rotctld_port }}
 
 1. Template a PowerShell script `Update-TLE.ps1` that downloads each URL in
    `{{ tle_sources }}` to `%APPDATA%\Gpredict\satdata\`:
+
    ```powershell
    $dest = "$env:APPDATA\Gpredict\satdata"
    Invoke-WebRequest -Uri "{{ item.url }}" -OutFile "$dest\{{ item.name }}.txt"
@@ -383,6 +361,7 @@ port={{ rotctld_port }}
 2. Deploy `Update-TLE.ps1` to `{{ hamlib_install_dir }}\scripts\`
 
 3. Register Scheduled Task via `community.windows.win_scheduled_task`:
+
    ```yaml
    community.windows.win_scheduled_task:
      name: "GpredictTLEUpdate"
@@ -399,6 +378,7 @@ port={{ rotctld_port }}
    ```
 
 4. Optionally fire the task immediately after creation to seed the TLE files:
+
    ```yaml
    win_command: schtasks /Run /TN "GpredictTLEUpdate"
    ```
@@ -421,6 +401,7 @@ port={{ rotctld_port }}
 
   roles:
     - winrm_baseline
+    - net_adapter
     - hamlib
     - gpredict
     - tle_update
@@ -439,13 +420,6 @@ port={{ rotctld_port }}
       register: svc_ftx1
     - ansible.builtin.assert:
         that: svc_ftx1.services[0].state == "running"
-
-    - name: Confirm rotctld is running
-      ansible.windows.win_service_info:
-        name: rotctld
-      register: svc_rotctld
-    - ansible.builtin.assert:
-        that: svc_rotctld.services[0].state == "running"
 ```
 
 ---
@@ -453,40 +427,38 @@ port={{ rotctld_port }}
 ## 7. Known Limitations and Open Items
 
 | Item | Detail |
-|------|--------|
+| ---- | ------ |
 | **FTX-1 hamlib model number** | Marked as placeholder `1060` in vars. Run `rigctld.exe --list \| findstr -i FTX` after hamlib install to confirm. Update `ftx1_hamlib_model` accordingly. |
-| **COM port assignment** | Windows assigns COM ports dynamically. The playbook cannot discover or fix these; the operator must populate `ft897_com_port` and `ftx1_com_port` manually after first-time hardware connection. |
-| **FTX-1 dual COM ports** | The FTX-1 registers two virtual COM ports (CAT-1 Enhanced, CAT-2 Standard). Ensure `ftx1_com_port` points to the Enhanced port. |
-| **Gpredict hwconf files** | Hardware (radio/rotator) config in Gpredict is stored in `%APPDATA%\Gpredict\hwconf\*.rig` and `*.rot` files, not in `gpredict.cfg`. The templates in role `gpredict` must be verified against a live install and extended to cover these files for full idempotent hardware config. |
+| **Gpredict hwconf key names** | The `.rig`/`.rot` key names in `hwconf\` templates should be verified against a live Gpredict installation before use. |
 | **Gpredict installer URL** | The SourceForge "latest download" redirect may change. Pin to a specific version URL (e.g. `gpredict-2.3.37-win32.exe`) once confirmed working. |
-| **Hamlib zip layout** | The hamlib Windows zip has a versioned top-level folder (e.g. `hamlib-4.7\`). The `win_unzip` task should strip or account for that prefix when placing binaries. |
-| **NSSM + BAT vs direct** | NSSM can invoke `rigctld.exe` directly (without a `.bat` wrapper) using its `AppParameters` setting. Using `.bat` wrappers adds one process layer but makes the command visible and editable without touching NSSM config. Either approach is valid; document the choice. |
-| **Firewall** | `rigctld` and `rotctld` listen on loopback only (127.0.0.1) by default. Windows Firewall should not block loopback traffic, but if Gpredict fails to connect, verify no third-party firewall is intercepting. Add an explicit `win_firewall_rule` task if needed. |
+| **Hamlib zip layout** | The hamlib Windows zip contains a versioned top-level folder (e.g. `hamlib-w64-4.7\`). The playbook extracts to a staging directory and renames via robocopy. |
+| **Firewall** | `rigctld` listens on loopback (127.0.0.1); polar-pilot is reached via the dedicated USB-Eth adapter. Windows Firewall should not interfere, but add `win_firewall_rule` tasks if connections fail. |
 | **FT-897 baud rate** | The FT-897 ships with CAT baud set to 9600. Verify via Menu 14 (`CAT RATE`). Mismatched baud is the most common cause of `rigctld` connection failure. |
-| **EasyComm variant** | Confirm whether the rotator speaks EasyComm II (model 202) or EasyComm III (model 204). Some controllers advertise EasyComm but implement a subset. Test with `rotctld -m 202 -r <host>:<port>` and `rotctl -m 2 -r 127.0.0.1:4534 p` (get position) before deploying. |
+| **USB-Eth subnet conflict** | polar-pilot's fallback is `192.168.1.200/24`. If the main LAN is also `192.168.1.x`, Windows will have two adapters on the same subnet and routing may be unreliable. Change polar-pilot's fallback IP (in firmware) or use a different subnet on the dedicated adapter. |
+| **polar-pilot DHCP timeout** | polar-pilot waits 120 s for DHCP before falling back to its static IP. With no DHCP server on the dedicated adapter, Gpredict will not be able to reach the rotator for the first ~2 minutes after power-on. |
 
 ---
 
 ## 8. Testing the Stack (Manual Verification After Playbook Run)
 
 ```powershell
-# From Windows PowerShell or cmd — test rigctld for FT-897
+# Test rigctld for FT-897 (uplink)
 "C:\hamlib\bin\rigctl.exe" -m 2 -r 127.0.0.1:4532 f
 # Expected: current frequency in Hz
 
-# Test rigctld for FTX-1
-"C:\hamlib\bin\rigctl.exe" -m 2 -r 127.0.0.1:4533 f
+# Test rigctld for FTX-1 (downlink)
+"C:\hamlib\bin\rigctl.exe" -m 2 -r 127.0.0.1:4535 f
 # Expected: current frequency in Hz
 
-# Test rotctld
-"C:\hamlib\bin\rotctl.exe" -m 2 -r 127.0.0.1:4534 p
+# Test polar-pilot directly (wait 120 s after power-on for DHCP timeout)
+"C:\hamlib\bin\rotctl.exe" -m 2 -r 192.168.1.200:4533 p
 # Expected: current azimuth and elevation
 ```
 
-In Gpredict: open **Edit → Preferences → Interfaces**, confirm each radio and rotator
-entry points to the correct localhost port, then open a satellite module, right-click a
-satellite, and select **Track** to verify live Doppler correction engages on both radios
-and the rotator begins moving.
+In Gpredict: open **Edit → Preferences → Interfaces**, confirm each radio points to
+the correct localhost port and the rotator points to `192.168.1.200:4533`, then open
+a satellite module, right-click a satellite, and select **Track** to verify live
+Doppler correction engages on both radios and the rotator begins moving.
 
 ---
 

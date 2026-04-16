@@ -6,18 +6,18 @@ Ansible playbook that provisions a Windows-based amateur radio satellite ground 
 
 Automates setup of a two-radio + rotator tracking station on Windows 10/11, controlled from WSL2 via Ansible over WinRM:
 
-- **Uplink radio:** Yaesu FT-897 → `rigctld` service on port 4532
-- **Downlink radio:** Yaesu FTX-1 → `rigctld` service on port 4533
-- **Rotator:** EasyComm (TCP) → `rotctld` service on port 4534
-- **Tracking software:** Gpredict connects to all three on localhost
+- **Uplink radio:** Yaesu FT-897 → `rigctld` NSSM service on port 4532 (COM port auto-detected)
+- **Downlink radio:** Yaesu FTX-1 → `rigctld` NSSM service on port 4535 (COM port auto-detected)
+- **Rotator:** [polar-pilot](https://github.com/ew1abz/polar-pilot) speaks rotctld natively — Gpredict connects directly to `192.168.1.200:4533` over a dedicated USB-Ethernet link
+- **Tracking software:** Gpredict
 
-Services are managed by NSSM so they start at boot and restart on failure.
+The playbook also configures the USB-Ethernet adapter's static IP and auto-detects radio COM ports via USB Vendor ID at run time.
 
 ## Usage
 
-1. Complete the [manual prerequisites](sat_station_ansible_spec.md#2-prerequisites-manual-steps--not-automated) (WinRM, COM ports, hamlib version)
+1. Complete the [manual prerequisites](sat_station_ansible_spec.md#2-prerequisites-manual-steps--not-automated) (WinRM, drivers, USB-Eth adapter connected)
 2. Copy `inventory/hosts.ini` and fill in your Windows username and password
-3. Edit `group_vars/all.yml` — at minimum set your callsign, location, and COM ports
+3. Edit `group_vars/all.yml` — at minimum set your callsign and location
 4. Run:
 
    ```bash
@@ -30,4 +30,4 @@ Services are managed by NSSM so they start at boot and restart on failure.
 - [`sat_station_ansible_spec.md`](sat_station_ansible_spec.md) — full specification, variable reference, and known limitations
 - [`site.yml`](site.yml) — top-level playbook
 - [`group_vars/all.yml`](group_vars/all.yml) — all operator-configurable variables
-- [`roles/`](roles/) — `winrm_baseline`, `hamlib`, `gpredict`, `tle_update`
+- [`roles/`](roles/) — `winrm_baseline`, `net_adapter`, `hamlib`, `gpredict`, `tle_update`

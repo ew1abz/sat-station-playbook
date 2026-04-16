@@ -10,7 +10,7 @@ operator_alt_m: 0          # metres above sea level
 # ft897_com_port is auto-detected from USB VID_0403 (FTDI) at runtime.
 # Set manually here only if auto-detection fails.
 ft897_com_port: ""
-ft897_baud: 9600            # Verify via FT-897 Menu 14 (CAT RATE)
+ft897_baud: 38400           # FT-897 Menu 19 (CAT RATE)
 ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
 ft897_rigctld_port: 4532
 
@@ -19,7 +19,7 @@ ft897_rigctld_port: 4532
 # Set manually here only if auto-detection fails.
 ftx1_com_port: ""
 ftx1_baud: 38400
-ftx1_hamlib_model: 1060     # PLACEHOLDER — verify: rigctld.exe --list | findstr FTX
+ftx1_hamlib_model: 1051     # Yaesu FTX-1
 ftx1_rigctld_port: 4535     # 4533 is reserved for polar-pilot
 
 # --- Rotator (polar-pilot) ---

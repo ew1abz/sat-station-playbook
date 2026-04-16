@@ -1,0 +1,32 @@
+{
+  "version": "0.2",
+  "words": [
+    "hamlib",
+    "rigctl",
+    "rigctld",
+    "rotctl",
+    "rotctld",
+    "nssm",
+    "gpredict",
+    "winrm",
+    "pywinrm",
+    "ftx",
+    "easycomm",
+    "gridsquare",
+    "satdata",
+    "hwconf",
+    "schtasks",
+    "robocopy",
+    "chocolatey",
+    "defmt",
+    "wiznet",
+    "embassy",
+    "no_std",
+    "no_main",
+    "thumbv7em",
+    "eabihf",
+    "dmamux",
+    "jinja",
+    "ansible"
+  ]
+}
