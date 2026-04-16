@@ -1,21 +1,37 @@
 ---
-- name: Check if Gpredict is installed
+- name: Check if Gpredict is already installed
   ansible.windows.win_stat:
     path: "{{ gpredict_install_dir }}\\gpredict.exe"
   register: gpredict_bin
 
-- name: Download Gpredict installer
+- name: Download Gpredict ZIP
   ansible.windows.win_get_url:
-    url: "{{ gpredict_installer_url }}"
-    dest: "C:\\Temp\\gpredict-setup.exe"
+    url: "{{ gpredict_zip_url }}"
+    dest: "C:\\Temp\\gpredict.zip"
     follow_redirects: all
   when: not gpredict_bin.stat.exists
 
-- name: Install Gpredict silently (NSIS /S flag)
-  ansible.windows.win_package:
-    path: "C:\\Temp\\gpredict-setup.exe"
-    arguments: "/S"
-    state: present
+- name: Extract Gpredict ZIP to install directory
+  community.windows.win_unzip:
+    src: "C:\\Temp\\gpredict.zip"
+    dest: "C:\\Temp\\gpredict_stage"
+    creates: "C:\\Temp\\gpredict_stage"
+  when: not gpredict_bin.stat.exists
+
+- name: Create Gpredict install directory
+  ansible.windows.win_file:
+    path: "{{ gpredict_install_dir }}"
+    state: directory
+  when: not gpredict_bin.stat.exists
+
+- name: Copy Gpredict from staging to install directory
+  ansible.windows.win_shell: |
+    $staged = Get-ChildItem -Path "C:\Temp\gpredict_stage" -Directory |
+        Select-Object -First 1 -ExpandProperty FullName
+    robocopy "$staged" "{{ gpredict_install_dir }}" /E | Out-Null
+    exit 0
+  args:
+    creates: "{{ gpredict_install_dir }}\\gpredict.exe"
   when: not gpredict_bin.stat.exists
 
 - name: Ensure Gpredict config directory exists

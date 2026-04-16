@@ -1,16 +1,4 @@
 ---
-- name: Check if Gpredict installer cache exists
-  ansible.windows.win_stat:
-    path: 'C:\Temp\gpredict-setup.exe'
-  register: gpredict_installer
-
-- name: Uninstall Gpredict silently (NSIS /S flag)
-  ansible.windows.win_package:
-    path: 'C:\Temp\gpredict-setup.exe'
-    arguments: "/S"
-    state: absent
-  when: gpredict_installer.stat.exists
-
 - name: Remove Gpredict install directory
   ansible.windows.win_file:
     path: "{{ gpredict_install_dir }}"
@@ -30,7 +18,10 @@
     path: "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
     state: absent
 
-- name: Remove Gpredict installer cache
+- name: Remove Gpredict staging files
   ansible.windows.win_file:
-    path: 'C:\Temp\gpredict-setup.exe'
+    path: "{{ item }}"
     state: absent
+  loop:
+    - 'C:\Temp\gpredict.zip'
+    - 'C:\Temp\gpredict_stage'
