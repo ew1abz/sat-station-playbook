@@ -26,6 +26,7 @@
     enabled: true
 
 - name: Run TLE update immediately to seed satellite data
-  ansible.windows.win_command: >
-    schtasks /Run /TN "GpredictTLEUpdate"
+  ansible.windows.win_shell: >
+    powershell.exe -ExecutionPolicy Bypass
+    -File "{{ hamlib_install_dir }}\scripts\Update-TLE.ps1"
   changed_when: false

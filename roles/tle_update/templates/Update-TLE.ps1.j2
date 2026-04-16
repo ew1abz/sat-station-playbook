@@ -9,8 +9,8 @@ if (-not (Test-Path $dest)) {
 
 {% for source in tle_sources %}
 try {
-    Invoke-WebRequest -Uri "{{ source.url }}" -OutFile "$dest\{{ source.name }}.txt" -UseBasicParsing
-    Write-Output "Updated {{ source.name }}.txt"
+    Invoke-WebRequest -Uri "{{ source.url }}" -OutFile "$dest\{{ source.name }}.tle" -UseBasicParsing
+    Write-Output "Updated {{ source.name }}.tle"
 } catch {
     Write-Warning "Failed to update {{ source.name }}: $_"
 }
