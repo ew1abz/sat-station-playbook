@@ -123,7 +123,7 @@
     - name: Check DHCP is re-enabled on USB Ethernet adapter
       ansible.windows.win_shell: |
         $adapter = Get-NetAdapter -Physical | Where-Object {
-            (Get-NetAdapterHardwareInfo -Name $_.Name -ErrorAction SilentlyContinue).BusType -eq 'USB'
+            $_.InterfaceDescription -like '*USB*'
         } | Select-Object -First 1
         if (-not $adapter) { exit 0 }   # adapter absent — nothing to check
         $iface = Get-NetIPInterface -InterfaceAlias $adapter.Name -AddressFamily IPv4
