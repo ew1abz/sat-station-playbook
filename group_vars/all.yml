@@ -10,8 +10,8 @@ operator_alt_m: 0          # metres above sea level
 # ft897_com_port is auto-detected from USB VID_0403 (FTDI) at runtime.
 # Set manually here only if auto-detection fails.
 ft897_com_port: ""
-ft897_baud: 38400           # FT-897 Menu 19 (CAT RATE)
-ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
+ft897_baud: 38400           # FT-897 Menu 19 = CAT RATE (not Menu 14, which is BEEP VOL)
+ft897_hamlib_model: 1023    # hamlib model for Yaesu FT-897
 ft897_rigctld_port: 4532
 
 # --- Radio: FTX-1 (downlink) ---
@@ -35,14 +35,15 @@ usb_eth_ip: "192.168.1.1"
 usb_eth_prefix: 24
 
 # --- Hamlib ---
-hamlib_version: "4.7"
+hamlib_version: "4.7.1"
 hamlib_install_dir: 'C:\hamlib'
-hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7/hamlib-w64-4.7.zip"
+hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7.1/hamlib-w64-4.7.1.zip"
 
 # --- Gpredict ---
 # Note: Gpredict is 32-bit; installer typically deploys to Program Files (x86)
-gpredict_installer_url: "https://sourceforge.net/projects/gpredict/files/latest/download"
-gpredict_install_dir: 'C:\Program Files (x86)\Gpredict'
+gpredict_zip_url: "https://downloads.sourceforge.net/project/gpredict/Gpredict/2.3.37/gpredict-win32-2.3.37.zip"
+gpredict_version: "2.3.37"
+gpredict_install_dir: 'C:\Gpredict'
 
 # --- NSSM ---
 nssm_chocolatey_pkg: "nssm"

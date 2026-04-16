@@ -58,6 +58,11 @@
     path: "{{ hamlib_install_dir }}\\logs"
     state: directory
 
+- name: Ensure C:\Temp exists
+  ansible.windows.win_file:
+    path: 'C:\Temp'
+    state: directory
+
 - name: Download hamlib ZIP
   ansible.windows.win_get_url:
     url: "{{ hamlib_zip_url }}"
@@ -67,7 +72,7 @@
 # The hamlib ZIP contains a versioned top-level folder (e.g. hamlib-w64-4.7\).
 # Extract to staging first, then robocopy contents to the install directory.
 - name: Extract hamlib ZIP to staging area
-  ansible.windows.win_unzip:
+  community.windows.win_unzip:
     src: "C:\\Temp\\hamlib.zip"
     dest: "C:\\Temp\\hamlib_stage"
     creates: "C:\\Temp\\hamlib_stage"
@@ -77,6 +82,7 @@
     $staged = Get-ChildItem -Path "C:\Temp\hamlib_stage" -Directory |
         Select-Object -First 1 -ExpandProperty FullName
     robocopy "$staged" "{{ hamlib_install_dir }}" /E | Out-Null
+    exit 0
   args:
     creates: "{{ hamlib_install_dir }}\\bin\\rigctld.exe"
 
