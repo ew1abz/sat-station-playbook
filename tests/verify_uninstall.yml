@@ -1,0 +1,133 @@
+---
+# Post-uninstall verification.
+# Usage:
+#   ansible-playbook tests/verify_uninstall.yml -i tests/inventory/hosts.ini
+- name: Verify satellite station has been removed
+  hosts: sat_station
+  gather_facts: true
+
+  tasks:
+    # --- hamlib ---
+
+    - name: Check rigctld-ft897 service is absent
+      ansible.windows.win_service_info:
+        name: rigctld-ft897
+      register: svc_ft897
+
+    - name: Assert rigctld-ft897 service is absent
+      ansible.builtin.assert:
+        that: svc_ft897.services | length == 0
+        fail_msg: "rigctld-ft897 service still exists"
+
+    - name: Check rigctld-ftx1 service is absent
+      ansible.windows.win_service_info:
+        name: rigctld-ftx1
+      register: svc_ftx1
+
+    - name: Assert rigctld-ftx1 service is absent
+      ansible.builtin.assert:
+        that: svc_ftx1.services | length == 0
+        fail_msg: "rigctld-ftx1 service still exists"
+
+    - name: Check port 4532 is not listening
+      ansible.windows.win_shell: netstat -ano | findstr "127.0.0.1:4532.*LISTENING"
+      register: port_4532
+      changed_when: false
+      failed_when: false
+
+    - name: Assert port 4532 is not listening
+      ansible.builtin.assert:
+        that: port_4532.rc != 0
+        fail_msg: "Something is still listening on port 4532"
+
+    - name: Check port 4535 is not listening
+      ansible.windows.win_shell: netstat -ano | findstr "127.0.0.1:4535.*LISTENING"
+      register: port_4535
+      changed_when: false
+      failed_when: false
+
+    - name: Assert port 4535 is not listening
+      ansible.builtin.assert:
+        that: port_4535.rc != 0
+        fail_msg: "Something is still listening on port 4535"
+
+    - name: Check hamlib directory is absent
+      ansible.windows.win_stat:
+        path: "{{ hamlib_install_dir }}"
+      register: hamlib_dir
+
+    - name: Assert hamlib directory is absent
+      ansible.builtin.assert:
+        that: not hamlib_dir.stat.exists
+        fail_msg: "{{ hamlib_install_dir }} still exists"
+
+    - name: Check hamlib is not in PATH
+      ansible.windows.win_shell: where.exe rigctld.exe
+      register: hamlib_path
+      changed_when: false
+      failed_when: false
+
+    - name: Assert hamlib is not in PATH
+      ansible.builtin.assert:
+        that: hamlib_path.rc != 0
+        fail_msg: "rigctld.exe is still findable in PATH"
+
+    # --- gpredict ---
+
+    - name: Check Gpredict config and hwconf files are absent
+      ansible.windows.win_stat:
+        path: "{{ item }}"
+      register: gpredict_file_stats
+      loop:
+        - "{{ gpredict_install_dir }}\\gpredict.exe"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+
+    - name: Assert Gpredict files are absent
+      ansible.builtin.assert:
+        that: not item.stat.exists
+        fail_msg: "Still present: {{ item.item }}"
+      loop: "{{ gpredict_file_stats.results }}"
+
+    # --- tle_update ---
+
+    - name: Check GpredictTLEUpdate scheduled task is absent
+      ansible.windows.win_shell: |
+        schtasks /Query /TN "GpredictTLEUpdate" /FO LIST 2>&1
+      register: tle_task
+      changed_when: false
+      failed_when: false
+
+    - name: Assert GpredictTLEUpdate task is absent
+      ansible.builtin.assert:
+        that: tle_task.rc != 0
+        fail_msg: "GpredictTLEUpdate scheduled task still exists"
+
+    # --- net_adapter ---
+
+    - name: Check static IP 192.168.1.1 is gone
+      ansible.windows.win_shell: |
+        $ip = Get-NetIPAddress -IPAddress "{{ usb_eth_ip }}" -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if ($ip) { exit 1 } else { exit 0 }
+      register: usb_ip_check
+      changed_when: false
+      failed_when: usb_ip_check.rc != 0
+
+    - name: Assert static IP is gone
+      ansible.builtin.assert:
+        that: usb_ip_check.rc == 0
+        fail_msg: "Static IP {{ usb_eth_ip }} is still assigned"
+
+    - name: Check DHCP is re-enabled on USB Ethernet adapter
+      ansible.windows.win_shell: |
+        $adapter = Get-NetAdapter -Physical | Where-Object {
+            (Get-NetAdapterHardwareInfo -Name $_.Name -ErrorAction SilentlyContinue).BusType -eq 'USB'
+        } | Select-Object -First 1
+        if (-not $adapter) { exit 0 }   # adapter absent — nothing to check
+        $iface = Get-NetIPInterface -InterfaceAlias $adapter.Name -AddressFamily IPv4
+        if ($iface.Dhcp -eq 'Enabled') { exit 0 } else { exit 1 }
+      register: dhcp_check
+      changed_when: false
+      failed_when: dhcp_check.rc != 0

@@ -1,0 +1,116 @@
+---
+# Hardware verification — requires radios and polar-pilot physically connected and powered.
+# Run manually after site.yml:
+#   ansible-playbook tests/verify_hardware.yml -i tests/inventory/hosts.ini
+- name: Verify hardware connectivity
+  hosts: sat_station
+  gather_facts: false
+
+  tasks:
+    # --- FT-897 uplink (rigctld on :4532) ---
+
+    - name: Query FT-897 frequency via rigctld
+      ansible.windows.win_shell: |
+        $out = & "{{ hamlib_install_dir }}\bin\rigctl.exe" -m 2 -r 127.0.0.1:{{ ft897_rigctld_port }} f 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "rigctl FT-897 failed: $out"
+            exit 1
+        }
+        $out.Trim()
+      register: ft897_freq
+      changed_when: false
+
+    - name: Assert FT-897 frequency is a plausible number
+      ansible.builtin.assert:
+        that: ft897_freq.stdout | trim | float > 0
+        fail_msg: "FT-897 returned unexpected frequency: '{{ ft897_freq.stdout | trim }}'"
+
+    - name: Show FT-897 frequency
+      ansible.builtin.debug:
+        msg: "FT-897 uplink frequency: {{ ft897_freq.stdout | trim }} Hz"
+
+    # --- FTX-1 downlink (rigctld on :4535) ---
+
+    - name: Query FTX-1 frequency via rigctld
+      ansible.windows.win_shell: |
+        $out = & "{{ hamlib_install_dir }}\bin\rigctl.exe" -m 2 -r 127.0.0.1:{{ ftx1_rigctld_port }} f 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "rigctl FTX-1 failed: $out"
+            exit 1
+        }
+        $out.Trim()
+      register: ftx1_freq
+      changed_when: false
+
+    - name: Assert FTX-1 frequency is a plausible number
+      ansible.builtin.assert:
+        that: ftx1_freq.stdout | trim | float > 0
+        fail_msg: "FTX-1 returned unexpected frequency: '{{ ftx1_freq.stdout | trim }}'"
+
+    - name: Show FTX-1 frequency
+      ansible.builtin.debug:
+        msg: "FTX-1 downlink frequency: {{ ftx1_freq.stdout | trim }} Hz"
+
+    # --- polar-pilot rotator (rotctld on rotator_host:rotator_port) ---
+
+    - name: Query rotator position via polar-pilot
+      ansible.windows.win_shell: |
+        $out = & "{{ hamlib_install_dir }}\bin\rotctl.exe" -m 2 -r {{ rotator_host }}:{{ rotator_port }} p 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "rotctl failed: $out"
+            exit 1
+        }
+        $out.Trim()
+      register: rotator_pos
+      changed_when: false
+
+    - name: Parse rotator azimuth and elevation
+      ansible.builtin.set_fact:
+        rotator_az: "{{ rotator_pos.stdout_lines[0] | trim | float }}"
+        rotator_el: "{{ rotator_pos.stdout_lines[1] | trim | float }}"
+
+    - name: Assert azimuth is within 0–360
+      ansible.builtin.assert:
+        that: rotator_az | float >= 0 and rotator_az | float <= 360
+        fail_msg: "Azimuth out of range: {{ rotator_az }}"
+
+    - name: Assert elevation is within 0–90
+      ansible.builtin.assert:
+        that: rotator_el | float >= 0 and rotator_el | float <= 90
+        fail_msg: "Elevation out of range: {{ rotator_el }}"
+
+    - name: Show rotator position
+      ansible.builtin.debug:
+        msg: "Rotator position: Az={{ rotator_az }}°  El={{ rotator_el }}°"
+
+    # --- Round-trip: command rotator to a known position and read back ---
+
+    - name: Command rotator to Az=0 El=0 (park)
+      ansible.windows.win_shell: |
+        $out = & "{{ hamlib_install_dir }}\bin\rotctl.exe" -m 2 -r {{ rotator_host }}:{{ rotator_port }} P 0 0 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Error "rotctl P failed: $out"; exit 1 }
+      changed_when: true
+
+    - name: Wait for rotator to settle
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Read back rotator position after park command
+      ansible.windows.win_shell: |
+        & "{{ hamlib_install_dir }}\bin\rotctl.exe" -m 2 -r {{ rotator_host }}:{{ rotator_port }} p 2>&1
+      register: rotator_pos_after
+      changed_when: false
+
+    - name: Parse position after park
+      ansible.builtin.set_fact:
+        rotator_az_after: "{{ rotator_pos_after.stdout_lines[0] | trim | float }}"
+        rotator_el_after: "{{ rotator_pos_after.stdout_lines[1] | trim | float }}"
+
+    - name: Assert rotator acknowledged park position
+      ansible.builtin.assert:
+        that:
+          - rotator_az_after | float == 0.0
+          - rotator_el_after | float == 0.0
+        fail_msg: >
+          Rotator did not reach Az=0 El=0 — got Az={{ rotator_az_after }} El={{ rotator_el_after }}.
+          polar-pilot may be a stub build (in-memory state only) or the rotator did not finish moving.

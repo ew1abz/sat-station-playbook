@@ -1,0 +1,199 @@
+---
+# Post-install verification.
+# Usage:
+#   ansible-playbook tests/verify_install.yml -i tests/inventory/hosts.ini
+- name: Verify satellite station installation
+  hosts: sat_station
+  gather_facts: true
+
+  tasks:
+    # --- winrm_baseline ---
+
+    - name: Check Chocolatey is installed
+      ansible.windows.win_stat:
+        path: 'C:\ProgramData\chocolatey\bin\choco.exe'
+      register: choco_stat
+
+    - name: Assert Chocolatey is installed
+      ansible.builtin.assert:
+        that: choco_stat.stat.exists
+        fail_msg: "Chocolatey not found at expected path"
+
+    # --- hamlib ---
+
+    - name: Check rigctld.exe exists
+      ansible.windows.win_stat:
+        path: "{{ hamlib_install_dir }}\\bin\\rigctld.exe"
+      register: rigctld_stat
+
+    - name: Assert rigctld.exe exists
+      ansible.builtin.assert:
+        that: rigctld_stat.stat.exists
+
+    - name: Check rigctl.exe exists
+      ansible.windows.win_stat:
+        path: "{{ hamlib_install_dir }}\\bin\\rigctl.exe"
+      register: rigctl_stat
+
+    - name: Assert rigctl.exe exists
+      ansible.builtin.assert:
+        that: rigctl_stat.stat.exists
+
+    - name: Check hamlib is in system PATH
+      ansible.windows.win_shell: where.exe rigctld.exe
+      register: hamlib_path
+      changed_when: false
+      failed_when: hamlib_path.rc != 0
+
+    - name: Check rigctld-ft897 service
+      ansible.windows.win_service_info:
+        name: rigctld-ft897
+      register: svc_ft897
+
+    - name: Assert rigctld-ft897 is running
+      ansible.builtin.assert:
+        that:
+          - svc_ft897.services | length > 0
+          - svc_ft897.services[0].state == "running"
+        fail_msg: "rigctld-ft897 is not running (state: {{ svc_ft897.services[0].state | default('not found') }})"
+
+    - name: Check rigctld-ftx1 service
+      ansible.windows.win_service_info:
+        name: rigctld-ftx1
+      register: svc_ftx1
+
+    - name: Assert rigctld-ftx1 is running
+      ansible.builtin.assert:
+        that:
+          - svc_ftx1.services | length > 0
+          - svc_ftx1.services[0].state == "running"
+        fail_msg: "rigctld-ftx1 is not running (state: {{ svc_ftx1.services[0].state | default('not found') }})"
+
+    - name: Check port 4532 is listening
+      ansible.windows.win_shell: netstat -ano | findstr "127.0.0.1:4532.*LISTENING"
+      register: port_4532
+      changed_when: false
+      failed_when: port_4532.rc != 0
+
+    - name: Check port 4535 is listening
+      ansible.windows.win_shell: netstat -ano | findstr "127.0.0.1:4535.*LISTENING"
+      register: port_4535
+      changed_when: false
+      failed_when: port_4535.rc != 0
+
+    - name: Check BAT scripts exist
+      ansible.windows.win_stat:
+        path: "{{ item }}"
+      register: bat_stats
+      loop:
+        - "{{ hamlib_install_dir }}\\rigctld-ft897.bat"
+        - "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
+
+    - name: Assert BAT scripts exist
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: "Missing: {{ item.item }}"
+      loop: "{{ bat_stats.results }}"
+
+    # --- gpredict ---
+
+    - name: Check gpredict.exe exists
+      ansible.windows.win_stat:
+        path: "{{ gpredict_install_dir }}\\gpredict.exe"
+      register: gpredict_stat
+
+    - name: Assert gpredict.exe exists
+      ansible.builtin.assert:
+        that: gpredict_stat.stat.exists
+
+    - name: Check Gpredict config and hwconf files exist
+      ansible.windows.win_stat:
+        path: "{{ item }}"
+      register: gpredict_file_stats
+      loop:
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
+        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+
+    - name: Assert Gpredict config and hwconf files exist
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: "Missing: {{ item.item }}"
+      loop: "{{ gpredict_file_stats.results }}"
+
+    - name: Check ft897.rig references port 4532
+      ansible.windows.win_shell: |
+        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\ft897.rig" -Pattern "4532"
+      changed_when: false
+      failed_when: false
+      register: ft897_port_check
+
+    - name: Assert ft897.rig contains port 4532
+      ansible.builtin.assert:
+        that: ft897_port_check.stdout | length > 0
+        fail_msg: "ft897.rig does not reference port 4532"
+
+    - name: Check ftx1.rig references port 4535
+      ansible.windows.win_shell: |
+        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\ftx1.rig" -Pattern "4535"
+      changed_when: false
+      failed_when: false
+      register: ftx1_port_check
+
+    - name: Assert ftx1.rig contains port 4535
+      ansible.builtin.assert:
+        that: ftx1_port_check.stdout | length > 0
+        fail_msg: "ftx1.rig does not reference port 4535"
+
+    - name: Check rotator.rot references rotator host
+      ansible.windows.win_shell: |
+        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\rotator.rot" -Pattern "{{ rotator_host }}"
+      changed_when: false
+      failed_when: false
+      register: rotator_host_check
+
+    - name: Assert rotator.rot references rotator host
+      ansible.builtin.assert:
+        that: rotator_host_check.stdout | length > 0
+        fail_msg: "rotator.rot does not reference {{ rotator_host }}"
+
+    # --- tle_update ---
+
+    - name: Check GpredictTLEUpdate scheduled task exists
+      ansible.windows.win_shell: |
+        schtasks /Query /TN "GpredictTLEUpdate" /FO LIST 2>&1
+      register: tle_task
+      changed_when: false
+      failed_when: tle_task.rc != 0
+
+    - name: Check Update-TLE.ps1 exists
+      ansible.windows.win_stat:
+        path: "{{ hamlib_install_dir }}\\scripts\\Update-TLE.ps1"
+      register: tle_script_stat
+
+    - name: Assert Update-TLE.ps1 exists
+      ansible.builtin.assert:
+        that: tle_script_stat.stat.exists
+
+    - name: Check satellite data was seeded
+      ansible.windows.win_find:
+        paths: "{{ ansible_env.APPDATA }}\\Gpredict\\satdata"
+        patterns: "*.tle"
+      register: tle_files
+
+    - name: Assert at least one TLE file is present
+      ansible.builtin.assert:
+        that: tle_files.matched > 0
+        fail_msg: "No .tle files found in satdata — TLE seed may have failed"
+
+    # --- net_adapter ---
+
+    - name: Check USB Ethernet adapter has static IP 192.168.1.1
+      ansible.windows.win_shell: |
+        $ip = Get-NetIPAddress -IPAddress "{{ usb_eth_ip }}" -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if (-not $ip) { Write-Error "Static IP {{ usb_eth_ip }} not found"; exit 1 }
+        "found"
+      register: usb_ip_check
+      changed_when: false
+      failed_when: usb_ip_check.rc != 0

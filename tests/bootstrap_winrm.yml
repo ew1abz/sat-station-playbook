@@ -1,0 +1,29 @@
+---
+# One-time WinRM setup — run via SSH before any other playbook.
+# Usage:
+#   ansible-playbook tests/bootstrap_winrm.yml -i tests/inventory/hosts_ssh.ini
+- name: Bootstrap WinRM on Windows via SSH
+  hosts: sat_station
+  gather_facts: false
+
+  tasks:
+    - name: Enable WinRM service
+      ansible.builtin.raw: winrm quickconfig -q
+
+    - name: Allow Basic authentication
+      ansible.builtin.raw: winrm set winrm/config/service/auth '@{Basic="true"}'
+
+    - name: Allow unencrypted HTTP transport
+      ansible.builtin.raw: winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+
+    - name: Ensure WinRM listener is on all interfaces
+      ansible.builtin.raw: |
+        winrm set winrm/config/listener?Address=*+Transport=HTTP '@{Port="5985"}'
+
+    - name: Open WinRM port 5985 in Windows Firewall
+      ansible.builtin.raw: |
+        netsh advfirewall firewall add rule `
+          name="WinRM-HTTP-Ansible" protocol=TCP dir=in localport=5985 action=allow
+
+    - name: Set WinRM service to auto-start
+      ansible.builtin.raw: sc config winrm start= auto
