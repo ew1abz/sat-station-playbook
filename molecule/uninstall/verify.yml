@@ -1,0 +1,3 @@
+---
+- name: Verify satellite station has been removed
+  import_playbook: ../../tests/verify_uninstall.yml

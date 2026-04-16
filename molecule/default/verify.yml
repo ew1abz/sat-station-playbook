@@ -1,0 +1,3 @@
+---
+- name: Verify satellite station installation
+  import_playbook: ../../tests/verify_install.yml

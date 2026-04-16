@@ -1,0 +1,13 @@
+---
+# Molecule static inventory — adds the platform host to the sat_station group
+# and supplies WinRM connection vars from environment variables.
+sat_station:
+  hosts:
+    sat-station-win:
+      ansible_host: "{{ lookup('env', 'ANSIBLE_TEST_HOST') | default('192.168.50.19', true) }}"
+      ansible_connection: winrm
+      ansible_winrm_transport: basic
+      ansible_user: "{{ lookup('env', 'ANSIBLE_TEST_USER') }}"
+      ansible_password: "{{ lookup('env', 'ANSIBLE_TEST_PASS') }}"
+      ansible_port: 5985
+      ansible_winrm_scheme: http

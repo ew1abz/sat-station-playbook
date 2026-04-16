@@ -1,0 +1,55 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: default
+
+platforms:
+  - name: sat-station-win
+
+provisioner:
+  name: ansible
+  inventory:
+    links:
+      group_vars: ../../group_vars
+      inventory.yml: inventory.yml
+  env:
+    ANSIBLE_ROLES_PATH: "../../roles"
+  options:
+    v: false
+
+verifier:
+  name: ansible
+
+scenario:
+  create_sequence:
+    - dependency
+  check_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
+    - prepare
+    - converge
+    - check
+    - destroy
+  converge_sequence:
+    - dependency
+    - create
+    - converge
+  destroy_sequence:
+    - cleanup
+    - destroy
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - converge
+    - verify
+    - cleanup
+    - destroy
