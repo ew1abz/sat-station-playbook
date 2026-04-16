@@ -2,12 +2,18 @@
 - name: Find USB Ethernet adapter
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter -Physical | Where-Object {
-        (Get-NetAdapterHardwareInfo -Name $_.Name -ErrorAction SilentlyContinue).BusType -eq 'USB'
+        $_.InterfaceDescription -like '*USB*'
     } | Select-Object -First 1
-    if (-not $adapter) { Write-Error "No USB Ethernet adapter found — plug in the USB-Eth dongle"; exit 1 }
+    if (-not $adapter) { exit 1 }
     $adapter.Name
   register: usb_adapter_name
   changed_when: false
+  failed_when: false
+
+- name: Warn and skip if USB Ethernet adapter is absent
+  ansible.builtin.debug:
+    msg: "No USB Ethernet adapter found — skipping static IP configuration (plug in the USB-Eth dongle to enable rotator link)"
+  when: usb_adapter_name.rc != 0
 
 - name: Check whether static IP is already set
   ansible.windows.win_shell: |
@@ -16,6 +22,7 @@
     if ($ip) { "present" } else { "absent" }
   register: usb_ip_state
   changed_when: false
+  when: usb_adapter_name.rc == 0
 
 - name: Set static IP on USB Ethernet adapter
   ansible.windows.win_shell: |
@@ -25,4 +32,6 @@
     Set-NetIPInterface -InterfaceAlias $name -Dhcp Disabled -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $name `
         -IPAddress "{{ usb_eth_ip }}" -PrefixLength {{ usb_eth_prefix }}
-  when: (usb_ip_state.stdout | trim) == "absent"
+  when:
+    - usb_adapter_name.rc == 0
+    - (usb_ip_state.stdout | trim) == "absent"

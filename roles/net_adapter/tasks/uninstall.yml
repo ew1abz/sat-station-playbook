@@ -2,7 +2,7 @@
 - name: Find USB Ethernet adapter
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter -Physical | Where-Object {
-        (Get-NetAdapterHardwareInfo -Name $_.Name -ErrorAction SilentlyContinue).BusType -eq 'USB'
+        $_.InterfaceDescription -like '*USB*'
     } | Select-Object -First 1
     if (-not $adapter) { exit 0 }   # adapter absent or already removed — nothing to do
     $adapter.Name
