@@ -153,8 +153,8 @@ operator_alt_m: 0          # metres above sea level
 # ft897_com_port is auto-detected at run time via USB VID_0403 (FTDI).
 # Override here only if auto-detection fails.
 ft897_com_port: ""
-ft897_baud: 9600            # Verify via FT-897 Menu 14 (CAT RATE)
-ft897_hamlib_model: 1021    # hamlib model for Yaesu FT-897D
+ft897_baud: 38400           # FT-897 Menu 19 = CAT RATE (Menu 14 = BEEP VOL, unrelated)
+ft897_hamlib_model: 1023    # hamlib model for Yaesu FT-897
 ft897_rigctld_port: 4532
 
 # --- Radio: FTX-1 (downlink) ---
@@ -162,7 +162,7 @@ ft897_rigctld_port: 4532
 # Override here only if auto-detection fails.
 ftx1_com_port: ""
 ftx1_baud: 38400
-ftx1_hamlib_model: 1060     # PLACEHOLDER — verify: rigctld.exe --list | findstr FTX
+ftx1_hamlib_model: 1051     # Yaesu FTX-1
 ftx1_rigctld_port: 4535     # 4533 is reserved for polar-pilot
 
 # --- Rotator (polar-pilot) ---
@@ -177,14 +177,15 @@ usb_eth_ip: "192.168.1.1"
 usb_eth_prefix: 24
 
 # --- Hamlib ---
-hamlib_version: "4.7"
+hamlib_version: "4.7.1"
 hamlib_install_dir: 'C:\hamlib'
-hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7/hamlib-w64-4.7.zip"
+hamlib_zip_url: "https://github.com/Hamlib/Hamlib/releases/download/4.7.1/hamlib-w64-4.7.1.zip"
 
 # --- Gpredict ---
-# Gpredict is 32-bit; installer typically deploys to Program Files (x86).
-gpredict_installer_url: "https://sourceforge.net/projects/gpredict/files/latest/download"
-gpredict_install_dir: 'C:\Program Files (x86)\Gpredict'
+# Gpredict ships as a portable ZIP (no NSIS installer). Extracted to gpredict_install_dir.
+gpredict_zip_url: "https://downloads.sourceforge.net/project/gpredict/Gpredict/2.3.37/gpredict-win32-2.3.37.zip"
+gpredict_version: "2.3.37"
+gpredict_install_dir: 'C:\Gpredict'
 
 # --- NSSM ---
 nssm_chocolatey_pkg: "nssm"
@@ -224,8 +225,9 @@ polar-pilot's fallback address is reachable immediately after boot.
 
 **Tasks:**
 
-1. Find the USB-Ethernet adapter using `Get-NetAdapterHardwareInfo` filtered by
-   `BusType -eq 'USB'`. Fail with a clear message if none is found.
+1. Find the USB-Ethernet adapter using `Get-NetAdapter -Physical` filtered by
+   `InterfaceDescription -like '*USB*'`. Skip with a warning if none is found
+   (adapter may not be plugged in; role is re-run safely once connected).
 
 2. Check whether `{{ usb_eth_ip }}` is already assigned to the adapter.
 
@@ -315,15 +317,9 @@ any changes to the hamlib binaries themselves.
    `gpredict_installed`)
 
 2. If not installed:
-   - Download installer EXE via `win_get_url`
-   - Run silent installer via `win_package`:
-
-     ```yaml
-     win_package:
-       path: "C:\\Temp\\gpredict-setup.exe"
-       arguments: "/S"   # Gpredict uses NSIS, /S = silent
-       state: present
-     ```
+   - Download ZIP from `{{ gpredict_zip_url }}` via `win_get_url`
+   - Extract ZIP to staging via `community.windows.win_unzip`
+   - Robocopy the versioned subfolder to `{{ gpredict_install_dir }}`
 
 3. Ensure Gpredict config directory exists:  
    `%APPDATA%\Gpredict` and `%APPDATA%\Gpredict\satdata`
@@ -355,7 +351,7 @@ Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as sepa
 
    ```powershell
    $dest = "$env:APPDATA\Gpredict\satdata"
-   Invoke-WebRequest -Uri "{{ item.url }}" -OutFile "$dest\{{ item.name }}.txt"
+   Invoke-WebRequest -Uri "{{ item.url }}" -OutFile "$dest\{{ item.name }}.tle"
    ```
 
 2. Deploy `Update-TLE.ps1` to `{{ hamlib_install_dir }}\scripts\`
@@ -377,10 +373,10 @@ Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as sepa
      enabled: true
    ```
 
-4. Optionally fire the task immediately after creation to seed the TLE files:
+4. Run the script directly (synchronously) after creation to seed TLE files immediately:
 
    ```yaml
-   win_command: schtasks /Run /TN "GpredictTLEUpdate"
+   win_shell: powershell.exe -ExecutionPolicy Bypass -File "{{ hamlib_install_dir }}\scripts\Update-TLE.ps1"
    ```
 
 ---
@@ -406,20 +402,9 @@ Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as sepa
     - gpredict
     - tle_update
 
-  post_tasks:
-    - name: Confirm rigctld-ft897 is running
-      ansible.windows.win_service_info:
-        name: rigctld-ft897
-      register: svc_ft897
-    - ansible.builtin.assert:
-        that: svc_ft897.services[0].state == "running"
-
-    - name: Confirm rigctld-ftx1 is running
-      ansible.windows.win_service_info:
-        name: rigctld-ftx1
-      register: svc_ftx1
-    - ansible.builtin.assert:
-        that: svc_ftx1.services[0].state == "running"
+  # No post_tasks — service running-state depends on hardware being connected.
+  # Use tests/verify_install.yml to check deployment and
+  # tests/verify_hardware.yml to verify radio/rotator connectivity.
 ```
 
 ---
@@ -428,14 +413,13 @@ Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as sepa
 
 | Item | Detail |
 | ---- | ------ |
-| **FTX-1 hamlib model number** | Marked as placeholder `1060` in vars. Run `rigctld.exe --list \| findstr -i FTX` after hamlib install to confirm. Update `ftx1_hamlib_model` accordingly. |
 | **Gpredict hwconf key names** | The `.rig`/`.rot` key names in `hwconf\` templates should be verified against a live Gpredict installation before use. |
-| **Gpredict installer URL** | The SourceForge "latest download" redirect may change. Pin to a specific version URL (e.g. `gpredict-2.3.37-win32.exe`) once confirmed working. |
-| **Hamlib zip layout** | The hamlib Windows zip contains a versioned top-level folder (e.g. `hamlib-w64-4.7\`). The playbook extracts to a staging directory and renames via robocopy. |
+| **Hamlib zip layout** | The hamlib Windows zip contains a versioned top-level folder (e.g. `hamlib-w64-4.7.1\`). The playbook extracts to a staging directory and copies via robocopy. |
 | **Firewall** | `rigctld` listens on loopback (127.0.0.1); polar-pilot is reached via the dedicated USB-Eth adapter. Windows Firewall should not interfere, but add `win_firewall_rule` tasks if connections fail. |
-| **FT-897 baud rate** | The FT-897 ships with CAT baud set to 9600. Verify via Menu 14 (`CAT RATE`). Mismatched baud is the most common cause of `rigctld` connection failure. |
+| **FT-897 baud rate** | Set via FT-897 **Menu 19** (`CAT RATE`). Default is 9600; playbook expects 38400 — change the menu setting before running. Menu 14 is BEEP VOL (unrelated). |
 | **USB-Eth subnet conflict** | polar-pilot's fallback is `192.168.1.200/24`. If the main LAN is also `192.168.1.x`, Windows will have two adapters on the same subnet and routing may be unreliable. Change polar-pilot's fallback IP (in firmware) or use a different subnet on the dedicated adapter. |
 | **polar-pilot DHCP timeout** | polar-pilot waits 120 s for DHCP before falling back to its static IP. With no DHCP server on the dedicated adapter, Gpredict will not be able to reach the rotator for the first ~2 minutes after power-on. |
+| **Celestrak rate-limiting** | TLE seed (`Update-TLE.ps1`) may be blocked if the host IP is rate-limited by Celestrak. Run the script manually once the block lifts; scheduled daily runs will resume normally. |
 
 ---
 

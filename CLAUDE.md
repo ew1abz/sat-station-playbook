@@ -74,8 +74,8 @@ ansible-playbook -i inventory/hosts.ini site.yml
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `ft897_com_port` | (auto) | Auto-detected via USB VID_0403 (FTDI); set manually if needed |
-| `ft897_baud` | 38400 | FT-897 Menu 19 (CAT RATE) |
-| `ft897_hamlib_model` | 1021 | Yaesu FT-897D |
+| `ft897_baud` | 38400 | FT-897 Menu 19 = CAT RATE (Menu 14 = BEEP VOL, unrelated) |
+| `ft897_hamlib_model` | 1023 | Yaesu FT-897 |
 | `ft897_rigctld_port` | 4532 | |
 | `ftx1_com_port` | (auto) | Auto-detected via USB VID_10C4 Enhanced port (CP2105); set manually if needed |
 | `ftx1_baud` | 38400 | |
@@ -84,11 +84,14 @@ ansible-playbook -i inventory/hosts.ini site.yml
 | `rotator_host` | 192.168.1.200 | polar-pilot IP (static fallback after 120 s DHCP timeout) |
 | `rotator_port` | 4533 | polar-pilot rotctld port |
 | `usb_eth_ip` | 192.168.1.1 | Host IP on dedicated USB Ethernet link to rotator |
-| `hamlib_version` | 4.7 | |
+| `gpredict_zip_url` | (versioned SF URL) | Gpredict 2.3.37 ZIP from SourceForge |
+| `gpredict_version` | 2.3.37 | |
+| `gpredict_install_dir` | C:\Gpredict | Extracted from ZIP (not an NSIS installer) |
+| `hamlib_version` | 4.7.1 | |
 | `hamlib_install_dir` | C:\hamlib | |
 
 ## Outstanding Items
 
-1. **Gpredict installer URL** — `gpredict_installer_url` points to SourceForge "latest" redirect; pin to a versioned direct URL. Verify by checking the Gpredict GitHub releases page.
-2. **Gpredict hwconf key names** — Verify `.rig`/`.rot` template keys match a live Gpredict install: install manually, create interfaces via GUI, inspect `%APPDATA%\Gpredict\hwconf\`.
-3. **Windows Firewall** — Loopback traffic is unblocked by default; add explicit rules if connectivity issues arise.
+1. **Gpredict hwconf key names** — Verify `.rig`/`.rot` template keys match a live Gpredict install: install manually, create interfaces via GUI, inspect `%APPDATA%\Gpredict\hwconf\`.
+2. **Windows Firewall** — Loopback traffic is unblocked by default; add explicit rules if connectivity issues arise.
+3. **Celestrak rate-limiting** — TLE seed may be blocked if the host IP is rate-limited by Celestrak. Run `Update-TLE.ps1` manually once the block lifts.
