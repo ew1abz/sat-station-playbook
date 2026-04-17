@@ -56,6 +56,28 @@ ansible-galaxy collection install -r requirements.yml
 ansible-playbook -i inventory/hosts.ini site.yml
 ```
 
+### Run tests (Molecule)
+
+```bash
+export ANSIBLE_TEST_USER=Temp ANSIBLE_TEST_PASS=<password>
+
+~/.local/bin/molecule test       # full cycle: install → verify → uninstall
+~/.local/bin/molecule converge   # install only (leaves host provisioned)
+~/.local/bin/molecule verify     # software checks only
+```
+
+> **Note:** `molecule test` uninstalls everything at the end. Run `molecule converge`
+> again before running hardware tests.
+
+### Run hardware tests
+
+Requires all hardware connected and `molecule converge` already run:
+
+```bash
+~/.local/bin/ansible-playbook tests/verify_hardware.yml \
+    -i tests/inventory/hosts.ini -e @group_vars/all.yml
+```
+
 ### Verify after playbook runs (PowerShell on Windows)
 
 ```powershell

@@ -423,7 +423,43 @@ Radio and rotator connections are stored in `%APPDATA%\Gpredict\hwconf\` as sepa
 
 ---
 
-## 8. Testing the Stack (Manual Verification After Playbook Run)
+## 8. Testing the Stack
+
+### 8.1 Automated tests (from WSL2)
+
+The test suite lives in `tests/` and is driven by Molecule. Credentials are
+supplied via environment variables:
+
+```bash
+export ANSIBLE_TEST_USER=Temp
+export ANSIBLE_TEST_PASS=<password>
+```
+
+**Important:** `molecule test` runs a full install → verify → uninstall cycle.
+After the cycle completes, hamlib and Gpredict are removed from the Windows host.
+Re-run `molecule converge` before running hardware tests.
+
+```bash
+# Full cycle (install → verify → uninstall)
+~/.local/bin/molecule test
+
+# Install only (leaves host provisioned)
+~/.local/bin/molecule converge
+
+# Software verification (no hardware required)
+~/.local/bin/ansible-playbook tests/verify_install.yml \
+    -i tests/inventory/hosts.ini -e @group_vars/all.yml
+
+# Hardware verification (all hardware must be connected and powered)
+# Run molecule converge first if the host is not already provisioned.
+~/.local/bin/ansible-playbook tests/verify_hardware.yml \
+    -i tests/inventory/hosts.ini -e @group_vars/all.yml
+
+# Uninstall + verify clean state
+~/.local/bin/molecule test -s uninstall
+```
+
+### 8.2 Manual verification (PowerShell on Windows)
 
 ```powershell
 # Test rigctld for FT-897 (uplink)
