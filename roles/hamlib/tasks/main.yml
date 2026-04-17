@@ -1,45 +1,56 @@
 ---
 # --- COM port auto-detection ---
+# If ft897_com_port / ftx1_com_port are set in group_vars, detection is skipped.
 
 - name: Detect FT-897 COM port (FTDI chip, USB VID_0403)
   ansible.windows.win_shell: |
     $dev = Get-PnpDevice -Class Ports -Status OK |
         Where-Object { $_.InstanceId -like '*VID_0403*' } |
         Select-Object -First 1
-    if (-not $dev) {
-        Write-Error "FT-897 not detected — check USB cable and FTDI driver"
-        exit 1
-    }
+    if (-not $dev) { exit 1 }
     [regex]::Match($dev.FriendlyName, 'COM\d+').Value
   register: ft897_detected
   changed_when: false
+  failed_when: false
+  when: ft897_com_port == ""
 
 - name: Set FT-897 COM port fact
   ansible.builtin.set_fact:
     ft897_com_port: "{{ ft897_detected.stdout | trim }}"
+  when: ft897_com_port == "" and ft897_detected.rc == 0
+
+- name: Warn if FT-897 not detected
+  ansible.builtin.debug:
+    msg: "FT-897 not detected (VID_0403 not found) — rigctld-ft897 service will be skipped. Check USB cable and FTDI driver."
+  when: ft897_com_port == ""
 
 - name: Detect FTX-1 Enhanced COM port (CP2105 chip, USB VID_10C4)
   ansible.windows.win_shell: |
     $dev = Get-PnpDevice -Class Ports -Status OK |
         Where-Object { $_.InstanceId -like '*VID_10C4*' -and $_.FriendlyName -like '*Enhanced*' } |
         Select-Object -First 1
-    if (-not $dev) {
-        Write-Error "FTX-1 Enhanced COM port not detected — check USB cable and Silicon Labs CP210x driver"
-        exit 1
-    }
+    if (-not $dev) { exit 1 }
     [regex]::Match($dev.FriendlyName, 'COM\d+').Value
   register: ftx1_detected
   changed_when: false
+  failed_when: false
+  when: ftx1_com_port == ""
 
 - name: Set FTX-1 COM port fact
   ansible.builtin.set_fact:
     ftx1_com_port: "{{ ftx1_detected.stdout | trim }}"
+  when: ftx1_com_port == "" and ftx1_detected.rc == 0
+
+- name: Warn if FTX-1 not detected
+  ansible.builtin.debug:
+    msg: "FTX-1 not detected (VID_10C4 Enhanced not found) — rigctld-ftx1 service will be skipped. Check USB cable and CP210x driver."
+  when: ftx1_com_port == ""
 
 - name: Show detected COM ports
   ansible.builtin.debug:
     msg:
-      - "FT-897  → {{ ft897_com_port }}"
-      - "FTX-1   → {{ ftx1_com_port }}"
+      - "FT-897  → {{ ft897_com_port | default('not detected') }}"
+      - "FTX-1   → {{ ftx1_com_port | default('not detected') }}"
 
 # --- Hamlib installation ---
 
@@ -69,7 +80,7 @@
     dest: "C:\\Temp\\hamlib.zip"
     follow_redirects: all
 
-# The hamlib ZIP contains a versioned top-level folder (e.g. hamlib-w64-4.7\).
+# The hamlib ZIP contains a versioned top-level folder (e.g. hamlib-w64-4.7.1\).
 # Extract to staging first, then robocopy contents to the install directory.
 - name: Extract hamlib ZIP to staging area
   community.windows.win_unzip:
@@ -92,17 +103,19 @@
     state: present
     scope: machine
 
-# --- Service scripts ---
+# --- Service scripts (only for detected radios) ---
 
 - name: Template rigctld-ft897 launch script
   ansible.windows.win_template:
     src: rigctld-ft897.bat.j2
     dest: "{{ hamlib_install_dir }}\\rigctld-ft897.bat"
+  when: ft897_com_port != ""
 
 - name: Template rigctld-ftx1 launch script
   ansible.windows.win_template:
     src: rigctld-ftx1.bat.j2
     dest: "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
+  when: ftx1_com_port != ""
 
 # --- NSSM service registration ---
 
@@ -112,6 +125,7 @@
     application: "{{ hamlib_install_dir }}\\rigctld-ft897.bat"
     start_mode: auto
     state: present
+  when: ft897_com_port != ""
 
 - name: Register rigctld-ftx1 as NSSM service
   community.windows.win_nssm:
@@ -119,13 +133,16 @@
     application: "{{ hamlib_install_dir }}\\rigctld-ftx1.bat"
     start_mode: auto
     state: present
+  when: ftx1_com_port != ""
 
 - name: Start rigctld-ft897
   ansible.windows.win_service:
     name: rigctld-ft897
     state: started
+  when: ft897_com_port != ""
 
 - name: Start rigctld-ftx1
   ansible.windows.win_service:
     name: rigctld-ftx1
     state: started
+  when: ftx1_com_port != ""
