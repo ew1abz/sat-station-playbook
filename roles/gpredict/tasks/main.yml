@@ -71,3 +71,10 @@
   ansible.windows.win_template:
     src: rotator.rot.j2
     dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+
+- name: Create Gpredict desktop shortcut
+  community.windows.win_shortcut:
+    src: "{{ gpredict_install_dir }}\\gpredict.exe"
+    dest: 'C:\Users\Public\Desktop\Gpredict.lnk'
+    description: "Gpredict satellite tracking"
+    icon: "{{ gpredict_install_dir }}\\gpredict.exe,0"

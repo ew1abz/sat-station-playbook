@@ -1,4 +1,9 @@
 ---
+- name: Remove Gpredict desktop shortcut
+  ansible.windows.win_file:
+    path: 'C:\Users\Public\Desktop\Gpredict.lnk'
+    state: absent
+
 - name: Remove Gpredict install directory
   ansible.windows.win_file:
     path: "{{ gpredict_install_dir }}"
