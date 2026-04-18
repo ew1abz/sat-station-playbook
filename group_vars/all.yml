@@ -1,9 +1,11 @@
 ---
 # --- Operator identity ---
+# Override these in operator.yml (gitignored). Run setup-operator.sh to generate it.
 operator_callsign: "YOURCALL"
 operator_gridsquare: "AA00aa"
+operator_location: "Unknown"
 operator_lat: 0.0          # decimal degrees, north positive
-operator_lon: 0.0          # decimal degrees, east positive
+operator_lon: 0.0          # decimal degrees, east positive (west is negative)
 operator_alt_m: 0          # metres above sea level
 
 # --- Radio: FT-897 (uplink) ---

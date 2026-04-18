@@ -1,4 +1,7 @@
 # Inventory contains plaintext credentials — never commit
 inventory/hosts.ini
 
+# Operator-specific vars (personal info — never commit)
+operator.yml
+
 *.retry

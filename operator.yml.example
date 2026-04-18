@@ -1,0 +1,12 @@
+---
+# Copy this file to operator.yml and fill in your details.
+# operator.yml is gitignored — never committed to the repo.
+#
+# Run ./setup-operator.sh to generate operator.yml interactively.
+
+operator_callsign: "YOURCALL"
+operator_gridsquare: "AA00aa"       # 6-character Maidenhead grid square
+operator_location: "City, State"    # Human-readable location for Gpredict display
+operator_lat: 0.0                   # Decimal degrees, north positive
+operator_lon: 0.0                   # Decimal degrees, east positive (west is negative)
+operator_alt_m: 0                   # Metres above sea level
