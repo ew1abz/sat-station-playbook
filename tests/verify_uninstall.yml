@@ -80,10 +80,13 @@
       register: gpredict_file_stats
       loop:
         - "{{ gpredict_install_dir }}\\gpredict.exe"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\gpredict.cfg"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\{{ operator_callsign }}.qth"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\FM.mod"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\Linear.mod"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ft897.rig"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ftx1.rig"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\rotator.rot"
 
     - name: Assert Gpredict files are absent
       ansible.builtin.assert:

@@ -98,10 +98,13 @@
         path: "{{ item }}"
       register: gpredict_file_stats
       loop:
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
-        - "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\gpredict.cfg"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\{{ operator_callsign }}.qth"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\FM.mod"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\Linear.mod"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ft897.rig"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ftx1.rig"
+        - "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\rotator.rot"
 
     - name: Assert Gpredict config and hwconf files exist
       ansible.builtin.assert:
@@ -109,41 +112,66 @@
         fail_msg: "Missing: {{ item.item }}"
       loop: "{{ gpredict_file_stats.results }}"
 
-    - name: Check ft897.rig references port 4532
+    - name: Read hwconf and config file contents
       ansible.windows.win_shell: |
-        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\ft897.rig" -Pattern "4532"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\hwconf\ft897.rig"
+        Write-Output "---FTX1---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\hwconf\ftx1.rig"
+        Write-Output "---ROT---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\hwconf\rotator.rot"
+        Write-Output "---CFG---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\gpredict.cfg"
+        Write-Output "---QTH---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\{{ operator_callsign }}.qth"
+        Write-Output "---FM---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\modules\FM.mod"
+        Write-Output "---LINEAR---"
+        Get-Content "{{ ansible_env.USERPROFILE }}\Gpredict\modules\Linear.mod"
+      register: gpredict_contents
       changed_when: false
-      failed_when: false
-      register: ft897_port_check
 
-    - name: Assert ft897.rig contains port 4532
+    - name: Assert ft897.rig has correct section, port, and type
       ansible.builtin.assert:
-        that: ft897_port_check.stdout | length > 0
-        fail_msg: "ft897.rig does not reference port 4532"
+        that:
+          - "'[Radio]' in gpredict_contents.stdout"
+          - "'Port={{ ft897_rigctld_port }}' in gpredict_contents.stdout"
+          - "'Type=2' in gpredict_contents.stdout"
+          - "'PTT=1' in gpredict_contents.stdout"
+        fail_msg: "ft897.rig section/port/type check failed"
 
-    - name: Check ftx1.rig references port 4535
-      ansible.windows.win_shell: |
-        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\ftx1.rig" -Pattern "4535"
-      changed_when: false
-      failed_when: false
-      register: ftx1_port_check
-
-    - name: Assert ftx1.rig contains port 4535
+    - name: Assert ftx1.rig has correct port
       ansible.builtin.assert:
-        that: ftx1_port_check.stdout | length > 0
-        fail_msg: "ftx1.rig does not reference port 4535"
+        that:
+          - "'Port={{ ftx1_rigctld_port }}' in gpredict_contents.stdout"
+        fail_msg: "ftx1.rig does not reference port {{ ftx1_rigctld_port }}"
 
-    - name: Check rotator.rot references rotator host
-      ansible.windows.win_shell: |
-        Select-String -Path "{{ ansible_env.APPDATA }}\Gpredict\hwconf\rotator.rot" -Pattern "{{ rotator_host }}"
-      changed_when: false
-      failed_when: false
-      register: rotator_host_check
-
-    - name: Assert rotator.rot references rotator host
+    - name: Assert rotator.rot has correct section and host
       ansible.builtin.assert:
-        that: rotator_host_check.stdout | length > 0
-        fail_msg: "rotator.rot does not reference {{ rotator_host }}"
+        that:
+          - "'[Rotator]' in gpredict_contents.stdout"
+          - "'Host={{ rotator_host }}' in gpredict_contents.stdout"
+          - "'Port={{ rotator_port }}' in gpredict_contents.stdout"
+        fail_msg: "rotator.rot section/host/port check failed"
+
+    - name: Assert gpredict.cfg points to correct QTH file
+      ansible.builtin.assert:
+        that:
+          - "'DEFAULT_QTH={{ operator_callsign }}.qth' in gpredict_contents.stdout"
+        fail_msg: "gpredict.cfg DEFAULT_QTH does not reference {{ operator_callsign }}.qth"
+
+    - name: Assert QTH file contains operator coordinates
+      ansible.builtin.assert:
+        that:
+          - "'LAT={{ operator_lat }}' in gpredict_contents.stdout"
+          - "'LON={{ operator_lon }}' in gpredict_contents.stdout"
+          - "'DESCRIPTION={{ operator_callsign }}' in gpredict_contents.stdout"
+        fail_msg: "{{ operator_callsign }}.qth does not contain expected operator data"
+
+    - name: Assert modules reference correct QTH file
+      ansible.builtin.assert:
+        that:
+          - "gpredict_contents.stdout | regex_search('QTHFILE=' + operator_callsign + '.qth')"
+        fail_msg: "Satellite modules do not reference {{ operator_callsign }}.qth"
 
     # --- tle_update ---
 
@@ -165,7 +193,7 @@
 
     - name: Check satellite data was seeded
       ansible.windows.win_find:
-        paths: "{{ ansible_env.APPDATA }}\\Gpredict\\satdata"
+        paths: "{{ ansible_env.USERPROFILE }}\\Gpredict\\satdata"
         patterns: "*.tle"
       register: tle_files
 
