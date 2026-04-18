@@ -36,41 +36,70 @@
 
 - name: Ensure Gpredict config directory exists
   ansible.windows.win_file:
-    path: "{{ ansible_env.APPDATA }}\\Gpredict"
+    path: "{{ ansible_env.USERPROFILE }}\\Gpredict"
     state: directory
 
 - name: Ensure Gpredict satdata directory exists
   ansible.windows.win_file:
-    path: "{{ ansible_env.APPDATA }}\\Gpredict\\satdata"
+    path: "{{ ansible_env.USERPROFILE }}\\Gpredict\\satdata"
     state: directory
 
 - name: Ensure Gpredict hwconf directory exists
   ansible.windows.win_file:
-    path: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf"
+    path: "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf"
     state: directory
 
-- name: Deploy gpredict.cfg
-  ansible.windows.win_template:
-    src: gpredict.cfg.j2
-    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
+# Only manage DEFAULT_QTH — Gpredict owns the rest of gpredict.cfg
+# (window position, last-opened module, etc.) and rewrites it at runtime.
+- name: Ensure DEFAULT_QTH is set in gpredict.cfg
+  ansible.windows.win_shell: |
+    $cfg = "{{ ansible_env.USERPROFILE }}\Gpredict\gpredict.cfg"
+    $line = "DEFAULT_QTH={{ operator_callsign }}.qth"
+    if (Test-Path $cfg) {
+        $content = Get-Content $cfg -Raw
+        if ($content -match 'DEFAULT_QTH=') {
+            $content = $content -replace 'DEFAULT_QTH=.*', $line
+        } else {
+            $content = $content.TrimEnd() + "`r`n" + $line + "`r`n"
+        }
+        Set-Content $cfg $content -NoNewline
+    } else {
+        Set-Content $cfg ("[GLOBAL]`r`n" + $line + "`r`n")
+    }
+  changed_when: false
 
-# Hardware interface files — radio and rotator connections are configured here,
-# not in gpredict.cfg. Verify key names against a live Gpredict install if
-# Gpredict does not detect the interfaces after deployment.
+- name: Ensure Gpredict modules directory exists
+  ansible.windows.win_file:
+    path: "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules"
+    state: directory
+
+- name: Deploy station QTH file
+  ansible.windows.win_template:
+    src: station.qth.j2
+    dest: "{{ ansible_env.USERPROFILE }}\\Gpredict\\{{ operator_callsign }}.qth"
+
+- name: Deploy satellite modules
+  ansible.windows.win_template:
+    src: "modules/{{ item }}.j2"
+    dest: "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\{{ item }}"
+  loop:
+    - FM.mod
+    - Linear.mod
+
 - name: Deploy FT-897 radio interface (uplink)
   ansible.windows.win_template:
     src: ft897.rig.j2
-    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ft897.rig"
+    dest: "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ft897.rig"
 
 - name: Deploy FTX-1 radio interface (downlink)
   ansible.windows.win_template:
     src: ftx1.rig.j2
-    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\ftx1.rig"
+    dest: "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\ftx1.rig"
 
 - name: Deploy rotator interface
   ansible.windows.win_template:
     src: rotator.rot.j2
-    dest: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\rotator.rot"
+    dest: "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\rotator.rot"
 
 - name: Create Gpredict desktop shortcut
   community.windows.win_shortcut:

@@ -11,17 +11,22 @@
 
 - name: Remove Gpredict hwconf files
   ansible.windows.win_file:
-    path: "{{ ansible_env.APPDATA }}\\Gpredict\\hwconf\\{{ item }}"
+    path: "{{ ansible_env.USERPROFILE }}\\Gpredict\\hwconf\\{{ item }}"
     state: absent
   loop:
     - ft897.rig
     - ftx1.rig
     - rotator.rot
 
-- name: Remove Gpredict config file
+- name: Remove Gpredict config, QTH, and module files
   ansible.windows.win_file:
-    path: "{{ ansible_env.APPDATA }}\\Gpredict\\gpredict.cfg"
+    path: "{{ item }}"
     state: absent
+  loop:
+    - "{{ ansible_env.USERPROFILE }}\\Gpredict\\gpredict.cfg"
+    - "{{ ansible_env.USERPROFILE }}\\Gpredict\\{{ operator_callsign }}.qth"
+    - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\FM.mod"
+    - "{{ ansible_env.USERPROFILE }}\\Gpredict\\modules\\Linear.mod"
 
 - name: Remove Gpredict staging files
   ansible.windows.win_file:

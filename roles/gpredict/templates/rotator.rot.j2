@@ -1,6 +1,11 @@
-; Gpredict rotator interface — connects directly to polar-pilot
-; polar-pilot speaks the rotctld protocol natively; no local rotctld daemon needed.
-; Verify these keys against a live Gpredict installation if the interface is not detected.
-[Rotator Interface]
-host={{ rotator_host }}
-port={{ rotator_port }}
+[Rotator]
+Host={{ rotator_host }}
+Port={{ rotator_port }}
+AzType=0
+MinAz=0
+MaxAz=360
+MinEl=0
+MaxEl=90
+AzStopPos=0
+Cycle=0
+Threshold=0
